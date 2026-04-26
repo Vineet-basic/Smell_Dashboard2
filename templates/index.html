@@ -80,7 +80,18 @@ tr:hover td{background:rgba(99,102,241,.05)}
 #toast.err{border-color:var(--re)}
 .spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;margin-right:5px;vertical-align:middle}
 @keyframes spin{to{transform:rotate(360deg)}}
-@media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}.sg{grid-template-columns:repeat(2,1fr)}}
+/* Modal Styles */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:1000;opacity:0;pointer-events:none;transition:.3s;backdrop-filter:blur(4px)}
+.modal-overlay.show{opacity:1;pointer-events:all}
+.modal-content{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);width:90%;max-width:800px;max-height:85vh;overflow-y:auto;padding:24px;position:relative;transform:scale(.9);transition:.3s}
+.modal-overlay.show .modal-content{transform:scale(1)}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.modal-close{cursor:pointer;font-size:1.5rem;color:var(--mu)}
+.rule-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 2fr 40px;gap:8px;margin-bottom:8px;align-items:center}
+.rule-header{font-size:.7rem;font-weight:600;color:var(--mu);text-transform:uppercase;margin-bottom:8px}
+.add-rule-btn{width:100%;padding:10px;border:1px dashed var(--bd);background:rgba(255,255,255,.03);color:var(--mu);border-radius:8px;cursor:pointer;transition:.2s;margin-top:10px}
+.add-rule-btn:hover{background:rgba(255,255,255,.06);color:var(--tx);border-color:var(--ac)}
+@media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}.sg{grid-template-columns:repeat(2,1fr)}.rule-row{grid-template-columns:1fr 1fr;gap:10px}}
 </style>
 </head>
 <body>
@@ -128,13 +139,33 @@ tr:hover td{background:rgba(99,102,241,.05)}
       <button class="btn btn-re" id="btn-disconnect" onclick="disconnectSerial()" disabled>✕ Disconnect</button>
     </div>
     <div style="margin-top:12px;display:flex;align-items:center;gap:10px">
-      <label style="font-size:.8rem;color:var(--mu)">Live Auto-Classify</label>
-      <div id="live-toggle" onclick="toggleLive()" style="cursor:pointer;width:44px;height:24px;border-radius:99px;background:var(--s2);border:1px solid var(--bd);position:relative;transition:.3s">
-        <div id="live-knob" style="width:18px;height:18px;border-radius:50%;background:var(--mu);position:absolute;top:2px;left:2px;transition:.3s"></div>
+      <label style="font-size:.8rem;color:var(--mu)">Live Poll</label>
+      <div id="live-toggle" onclick="toggleLive()" style="cursor:pointer;width:38px;height:20px;border-radius:99px;background:var(--s2);border:1px solid var(--bd);position:relative;transition:.3s">
+        <div id="live-knob" style="width:14px;height:14px;border-radius:50%;background:var(--mu);position:absolute;top:2px;left:2px;transition:.3s"></div>
       </div>
     </div>
     <div class="ct" style="margin-top:14px;margin-bottom:4px">Raw Serial Log</div>
     <div class="log-box" id="raw-log">Waiting for data…</div>
+  </div>
+
+  <!-- Mode selection card -->
+  <div class="card" id="mode-card">
+    <div class="ct">⚙️ Classification Mode</div>
+    <div class="serial-row" style="margin-bottom: 15px;">
+        <select id="mode-sel" onchange="changeMode()">
+            <option value="model">ML Model</option>
+            <option value="heuristic">Heuristic</option>
+            <option value="threshold">Threshold</option>
+            <option value="spoilage">Spoilage Detection</option>
+        </select>
+    </div>
+    <div id="mode-desc" style="font-size: 0.8rem; color: var(--mu); min-height: 40px; margin-bottom: 15px;">
+        Select a mode to see details.
+    </div>
+    <div id="threshold-ui" style="display:none; border-top: 1px solid var(--bd); padding-top: 15px;">
+        <div class="ct" style="font-size: 0.65rem;">Rule Management</div>
+        <button class="btn btn-g" style="width:100%; font-size: 0.75rem; padding: 6px;" onclick="viewThresholdRules()">Manage Rules</button>
+    </div>
   </div>
 
   <!-- Result card -->
@@ -188,6 +219,39 @@ tr:hover td{background:rgba(99,102,241,.05)}
 
 </div>
 <div id="toast"></div>
+
+<!-- Threshold Rules Modal -->
+<div class="modal-overlay" id="rules-modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="st" style="margin-bottom:0">⚖️ Threshold Rule Editor</div>
+      <div class="modal-close" onclick="closeModal()">×</div>
+    </div>
+    <div style="margin-bottom:16px;font-size:.8rem;color:var(--mu)">
+      Rules are evaluated in order. The first sensor that falls within its min/max range will determine the classification.
+    </div>
+    
+    <div class="rule-row rule-header">
+      <div>Sensor</div>
+      <div>Min</div>
+      <div>Max</div>
+      <div>Label</div>
+      <div>Note</div>
+      <div></div>
+    </div>
+    
+    <div id="rules-list">
+      <!-- Dynamic rules here -->
+    </div>
+    
+    <button class="add-rule-btn" onclick="addNewRule()">+ Add New Rule</button>
+    
+    <div class="btn-row" style="margin-top:24px">
+      <button class="btn btn-g" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-p" onclick="saveRules()">Save Changes</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const SENSORS = {{ sensors | tojson }};
@@ -291,7 +355,7 @@ function toggleLive(){
     knob.style.left='2px'; knob.style.background='var(--mu)';
     tog.style.background='var(--s2)'; tog.style.borderColor='var(--bd)';
     document.getElementById('st-live').textContent='OFF';
-    clearTimeout(liveTimer); toast('Live mode OFF','ok');
+    clearTimeout(liveTimer); toast('Live mode OFF','err');
   }
 }
 
@@ -357,18 +421,152 @@ async function loadHistory(){
       <td>${r.confidence!=null?r.confidence.toFixed(1)+'%':'–'}</td>
       <td><code style="font-family:'JetBrains Mono',monospace;font-size:.76rem;color:var(--cy)">${r.dominant_sensor}</code></td>
       <td><span style="font-size:.7rem;color:var(--mu)">${r.source||'manual'}</span></td>
-      <td><span style="padding:3px 9px;border-radius:99px;font-size:.7rem;font-weight:600;background:${r.mode==='model'?'rgba(16,185,129,.15)':'rgba(245,158,11,.12)'};color:${r.mode==='model'?'var(--gr)':'var(--ye)'}">${r.mode}</span></td>
+      <td><span style="padding:3px 9px;border-radius:99px;font-size:.7rem;font-weight:600;background:${r.mode==='model'?'rgba(16,185,129,.15)':r.mode==='threshold'?'rgba(6,182,212,.12)':r.mode==='spoilage'?'rgba(239,68,68,.12)':'rgba(245,158,11,.12)'};color:${r.mode==='model'?'var(--gr)':r.mode==='threshold'?'var(--cy)':r.mode==='spoilage'?'var(--re)':'var(--ye)'}">${r.mode}</span></td>
     </tr>`).join('');
   }catch{}
+}
+
+async function changeMode(){
+  const mode = document.getElementById('mode-sel').value;
+  try {
+    const r = await fetch('/api/mode', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({mode})
+    });
+    const d = await r.json();
+    if (d.success) {
+      toast(`Mode changed to ${mode}`, 'ok');
+      await loadStatus();
+    } else {
+      toast(d.error || 'Error changing mode', 'err');
+    }
+  } catch (e) {
+    toast('Network error', 'err');
+  }
+}
+
+async function updateModeUI(status) {
+  const sel = document.getElementById('mode-sel');
+  const desc = document.getElementById('mode-desc');
+  const tUi = document.getElementById('threshold-ui');
+  const b = document.getElementById('mode-badge');
+  
+  sel.value = status.active_mode;
+  
+  if (status.active_mode !== status.effective_mode) {
+    b.textContent = `${status.effective_mode.toUpperCase()} (FALLBACK)`;
+    b.className = 'badge demo';
+    desc.innerHTML = `<span style="color:var(--re);font-weight:600">⚠️ Fallback active.</span><br>${status.active_mode} mode requested but unavailable. Currently using <strong>${status.effective_mode}</strong>.`;
+  } else {
+    b.textContent = status.active_mode.toUpperCase();
+    b.className = 'badge ' + (status.active_mode === 'model' ? 'on' : 'demo');
+    
+    const descriptions = {
+        'model': 'Uses the pre-trained .pkl model with engineered sensor features.',
+        'heuristic': 'Classifies based on the strongest sensor reading (rule-of-thumb).',
+        'threshold': 'Uses manual value-range rules defined for specific sensors.',
+        'spoilage': 'Analyzes specific gas markers (Ammonia, Alcohol, Methane) to detect food rot or fermentation.'
+    };
+    desc.textContent = descriptions[status.active_mode] || 'Active classification mode.';
+  }
+  
+  tUi.style.display = status.active_mode === 'threshold' ? 'block' : 'none';
+}
+
+function viewThresholdRules() {
+    document.getElementById('rules-modal').classList.add('show');
+    loadRules();
+}
+
+function closeModal() {
+    document.getElementById('rules-modal').classList.remove('show');
+}
+
+async function loadRules() {
+    try {
+        const r = await fetch('/api/threshold/rules');
+        const d = await r.json();
+        renderRules(d.rules);
+    } catch (e) {
+        toast('Failed to load rules', 'err');
+    }
+}
+
+function renderRules(rules) {
+    const list = document.getElementById('rules-list');
+    list.innerHTML = '';
+    rules.forEach((rule, i) => {
+        const row = document.createElement('div');
+        row.className = 'rule-row';
+        row.innerHTML = `
+            <select class="r-sensor">
+                ${SENSORS.map(s => `<option value="${s}" ${s === rule.sensor ? 'selected' : ''}>${s}</option>`).join('')}
+            </select>
+            <input type="number" class="r-min" value="${rule.min}" placeholder="Min">
+            <input type="number" class="r-max" value="${rule.max}" placeholder="Max">
+            <input type="text" class="r-label" value="${rule.label}" placeholder="Label">
+            <input type="text" class="r-note" value="${rule.note || ''}" placeholder="Note">
+            <button class="btn btn-re" style="padding:4px; min-width:0" onclick="removeRuleRow(this)">×</button>
+        `;
+        list.appendChild(row);
+    });
+}
+
+function addNewRule() {
+    const list = document.getElementById('rules-list');
+    const row = document.createElement('div');
+    row.className = 'rule-row';
+    row.innerHTML = `
+        <select class="r-sensor">
+            ${SENSORS.map(s => `<option value="${s}">${s}</option>`).join('')}
+        </select>
+        <input type="number" class="r-min" value="500" placeholder="Min">
+        <input type="number" class="r-max" value="1023" placeholder="Max">
+        <input type="text" class="r-label" value="unknown" placeholder="Label">
+        <input type="text" class="r-note" value="" placeholder="Note">
+        <button class="btn btn-re" style="padding:4px; min-width:0" onclick="removeRuleRow(this)">×</button>
+    `;
+    list.appendChild(row);
+}
+
+function removeRuleRow(btn) {
+    btn.parentElement.remove();
+}
+
+async function saveRules() {
+    const rows = document.querySelectorAll('#rules-list .rule-row');
+    const rules = Array.from(rows).map(row => ({
+        sensor: row.querySelector('.r-sensor').value,
+        min: parseInt(row.querySelector('.r-min').value),
+        max: parseInt(row.querySelector('.r-max').value),
+        label: row.querySelector('.r-label').value,
+        note: row.querySelector('.r-note').value
+    }));
+    
+    try {
+        const r = await fetch('/api/threshold/rules', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({rules})
+        });
+        if (r.ok) {
+            toast('Rules saved successfully', 'ok');
+            closeModal();
+        } else {
+            const d = await r.json();
+            toast(d.error || 'Failed to save rules', 'err');
+        }
+    } catch (e) {
+        toast('Network error', 'err');
+    }
 }
 
 async function loadStatus(){
   try{
     const r=await fetch('/api/status');
     const d=await r.json();
-    const b=document.getElementById('mode-badge');
-    b.textContent=d.model_loaded?'Model Active':'Demo Mode';
-    b.className='badge '+(d.model_loaded?'on':'demo');
+    updateModeUI(d);
     document.getElementById('st-total').textContent=d.total_predictions;
     updateSerialUI(d.serial);
   }catch{}

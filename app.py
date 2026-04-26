@@ -2,13 +2,19 @@
 app.py  –  Digital Smell Classifier · Flask Server
 ====================================================
 Serial format expected from Master Arduino:
-    MASTER: <MQ2>,<MQ3>,<MQ4>,<MQ5>  ||  SLAVE: <MQ6>,<MQ7>,<MQ8>,<MQ135>
+    MASTER: <MQ5>,<MQ135>,<MQ8>,<MQ3>  ||  SLAVE: <MQ7>,<MQ6>,<MQ2>,<MQ4>
 
 MQ9 is set to 0 (not wired in current hardware).
 
-Feature engineering mirrors your prediction notebook exactly:
+Feature engineering remains consistent with the model training:
     MQ3_MQ4_Ratio, MQ8_MQ3_Ratio, MQ3_MQ135_Sum,
     MQ5_MQ8_Ratio, Total_Active_VOC
+
+Classification Modes
+--------------------
+  model     – Pre-trained ML model (.pkl) with engineered features
+  heuristic – Dominant-sensor rule-based mapping (works without model)
+  threshold – Configurable sensor-value threshold rules
 """
 
 from flask import Flask, request, jsonify, render_template
@@ -24,6 +30,13 @@ import serial.tools.list_ports
 
 app = Flask(__name__)
 
+# ─── Calibration Settings ─────────────────────────────────────────────────────
+# No calibration currently applied. Readings are displayed as raw ADC values (0-1023).
+
+def apply_calibration(raw: dict) -> dict:
+    """Returns raw values without modification."""
+    return raw
+
 # ─── Sensor Configuration ─────────────────────────────────────────────────────
 SENSOR_NAMES = ["MQ2", "MQ3", "MQ4", "MQ5", "MQ6", "MQ7", "MQ8", "MQ9", "MQ135"]
 
@@ -33,6 +46,16 @@ FEATURE_NAMES = [
     "MQ3_MQ4_Ratio", "MQ8_MQ3_Ratio", "MQ3_MQ135_Sum",
     "MQ5_MQ8_Ratio", "Total_Active_VOC",
 ]
+
+# ─── Classification Mode State ─────────────────────────────────────────────────
+VALID_MODES = ["model", "heuristic", "threshold", "spoilage"]
+active_classification_mode = "model"   # default; falls back to heuristic if no model
+
+def get_effective_mode() -> str:
+    """Returns the active mode, downgrading 'model' → 'heuristic' if no model loaded."""
+    if active_classification_mode == "model" and model is None:
+        return "heuristic"
+    return active_classification_mode
 
 # ─── Model paths (checks both model/ subdir and project root) ──────────────────
 _BASE = os.path.dirname(os.path.abspath(__file__))
@@ -85,15 +108,14 @@ def engineer_features(raw: dict) -> np.ndarray:
     ]
     return np.array(feats, dtype=float)
 
-# ─── Prediction helper ─────────────────────────────────────────────────────────
-# Real class labels from trained model
+# ─── Labels & Heuristics ───────────────────────────────────────────────────────
 LABELS = [
     'banana', 'blueberry', 'grape', 'green',
     'kiwi', 'mushroom', 'pear', 'red',
     'strawberry', 'tomato',
 ]
 
-# Dominant-sensor → (label, emoji note) used only in DEMO mode (no model loaded)
+# Dominant-sensor → label (used in heuristic mode)
 HEURISTIC_MAP = {
     "MQ2":   ("strawberry",  "🍓 Sweet fruity VOC signature"),
     "MQ3":   ("banana",      "🍌 Ester-rich banana aroma"),
@@ -106,33 +128,138 @@ HEURISTIC_MAP = {
     "MQ135": ("green",       "🥬 Chlorophyll / green note"),
 }
 
+# ─── Threshold Rules ──────────────────────────────────────────────────────────
+# Each rule: { sensor, min, max, label, note }
+# Rules are evaluated in order; first match wins.
+# Default rules give a sensible starting point – can be updated via /api/threshold/rules
+threshold_rules = [
+    {"sensor": "MQ3",  "min": 600, "max": 1023, "label": "banana",     "note": "High MQ3 (ester-rich vapor)"},
+    {"sensor": "MQ2",  "min": 700, "max": 1023, "label": "strawberry",  "note": "High MQ2 (sweet VOC)"},
+    {"sensor": "MQ5",  "min": 500, "max": 1023, "label": "grape",       "note": "High MQ5 (fermented)"},
+    {"sensor": "MQ6",  "min": 450, "max": 1023, "label": "blueberry",   "note": "High MQ6 (light berry)"},
+    {"sensor": "MQ7",  "min": 500, "max": 1023, "label": "tomato",      "note": "High MQ7 (aldehyde profile)"},
+    {"sensor": "MQ8",  "min": 400, "max": 1023, "label": "kiwi",        "note": "High MQ8 (tart compound)"},
+    {"sensor": "MQ4",  "min": 400, "max": 1023, "label": "mushroom",    "note": "High MQ4 (earthy)"},
+    {"sensor": "MQ135","min": 400, "max": 1023, "label": "green",       "note": "High MQ135 (green note)"},
+    {"sensor": "MQ9",  "min": 300, "max": 1023, "label": "pear",        "note": "High MQ9 (mild ester)"},
+]
+
+def run_threshold(raw: dict, dominant_sensor: str) -> dict:
+    """Evaluate threshold rules; return first match or fallback to dominant sensor."""
+    for rule in threshold_rules:
+        v = raw.get(rule["sensor"], 0)
+        if rule["min"] <= v <= rule["max"]:
+            confidence = round(min((v - rule["min"]) / max(rule["max"] - rule["min"], 1), 1.0) * 100, 2)
+            return {
+                "label":           rule["label"],
+                "confidence":      confidence,
+                "dominant_sensor": rule["sensor"],
+                "note":            rule["note"] + f"  [Threshold rule: {rule['sensor']} ∈ [{rule['min']}, {rule['max']}]]",
+                "mode":            "threshold",
+                "rule_matched":    rule,
+            }
+    # No rule fired – fall back to dominant sensor
+    smell, note = HEURISTIC_MAP.get(dominant_sensor, ("Unknown", "No matching rule"))
+    confidence = round(min(raw[dominant_sensor] / 1023.0, 1.0) * 100, 2)
+    return {
+        "label":           smell,
+        "confidence":      confidence,
+        "dominant_sensor": dominant_sensor,
+        "note":            note + "  [No threshold rule matched – dominant sensor fallback]",
+        "mode":            "threshold",
+        "rule_matched":    None,
+    }
+
+# ─── Spoilage Detection Logic ──────────────────────────────────────────────────
+def run_spoilage(raw: dict) -> dict:
+    """
+    Analyzes MQ135 (Ammonia/VOC), MQ3 (Alcohol), and MQ4 (Methane)
+    to detect food decomposition or fruit fermentation.
+    """
+    mq3   = raw.get("MQ3", 0)
+    mq135 = raw.get("MQ135", 0)
+    mq4   = raw.get("MQ4", 0)
+    total = sum(raw.values())
+    
+    dominant_sensor = max(raw, key=raw.get)
+    
+    # 1. Check for Rot/Decomposition (High Ammonia or Methane)
+    if mq135 > 450 or mq4 > 400:
+        label = "Spoiled Food"
+        note = "🚨 HIGH SPOILAGE: Strong ammonia or methane levels detected (decomposition)."
+        conf = min((max(mq135, mq4) / 1023.0) * 100 + 20, 100)
+    
+    # 2. Check for Over-ripe/Fermenting Fruit (High Alcohol)
+    elif mq3 > 500:
+        label = "Spoiled Fruit"
+        note = "🍎 FERMENTING: High alcohol/ester levels detected (over-ripe fruit)."
+        conf = min((mq3 / 1023.0) * 100 + 10, 100)
+    
+    # 3. Moderate levels suggest fresh products
+    elif 150 < mq3 <= 400:
+        label = "Fresh Fruit"
+        note = "🍏 FRESH: Normal aromatic ester levels for ripe fruit."
+        conf = 85.0
+        
+    elif 100 < mq135 <= 300:
+        label = "Fresh Vegetable"
+        note = "🥬 FRESH: Standard VOC levels for fresh vegetables."
+        conf = 80.0
+        
+    # 4. Low levels
+    else:
+        label = "Fresh / Clear"
+        note = "✅ CLEAN: No significant spoilage gases detected."
+        conf = max(0, 100.0 - (total / 5000.0 * 100))
+        
+    return {
+        "label":           label,
+        "confidence":      round(conf, 2),
+        "dominant_sensor": dominant_sensor,
+        "note":            note,
+        "mode":            "spoilage",
+    }
+
+# ─── Prediction dispatcher ─────────────────────────────────────────────────────
 def run_prediction(raw: dict) -> dict:
     """
-    Accepts a dict of raw sensor values.
-    Returns prediction result dict.
+    Dispatches to the currently active classification mode.
+    Returns a result dict always containing:
+        label, confidence, dominant_sensor, note, mode
     """
     dominant_sensor = SENSOR_NAMES[int(np.argmax([raw[s] for s in SENSOR_NAMES]))]
+    mode = get_effective_mode()
 
-    if model is not None:
-        feats = engineer_features(raw).reshape(1, -1)
-        label = str(model.predict(feats)[0])
-        proba = model.predict_proba(feats)[0] if hasattr(model, "predict_proba") else None
-        confidence = round(float(np.max(proba)) * 100, 2) if proba is not None else None
-        note = "Prediction from trained model."
-        mode = "model"
-    else:
+    if mode == "model":
+        feats  = engineer_features(raw).reshape(1, -1)
+        label  = str(model.predict(feats)[0])
+        proba  = model.predict_proba(feats)[0] if hasattr(model, "predict_proba") else None
+        conf   = round(float(np.max(proba)) * 100, 2) if proba is not None else None
+        note   = "ML model prediction (trained classifier)."
+        return {
+            "label":           label,
+            "confidence":      conf,
+            "dominant_sensor": dominant_sensor,
+            "note":            note,
+            "mode":            "model",
+        }
+
+    elif mode == "threshold":
+        return run_threshold(raw, dominant_sensor)
+
+    elif mode == "spoilage":
+        return run_spoilage(raw)
+
+    else:  # heuristic
         smell, note = HEURISTIC_MAP.get(dominant_sensor, ("Unknown", "No clear signature"))
-        label = smell
-        confidence = round(min(raw[dominant_sensor] / 1023.0, 1.0) * 100, 2)
-        mode = "demo"
-
-    return {
-        "label": label,
-        "confidence": confidence,
-        "dominant_sensor": dominant_sensor,
-        "note": note,
-        "mode": mode,
-    }
+        conf = round(min(raw[dominant_sensor] / 1023.0, 1.0) * 100, 2)
+        return {
+            "label":           smell,
+            "confidence":      conf,
+            "dominant_sensor": dominant_sensor,
+            "note":            note,
+            "mode":            "heuristic",
+        }
 
 # ─── In-memory history ─────────────────────────────────────────────────────────
 recent_readings = []
@@ -140,9 +267,9 @@ MAX_READINGS = 100
 
 def log_reading(raw: dict, result: dict, source: str = "manual"):
     entry = {
-        "timestamp": datetime.now().isoformat(),
+        "timestamp":     datetime.now().isoformat(),
         "sensor_values": raw,
-        "source": source,
+        "source":        source,
         **result,
     }
     recent_readings.append(entry)
@@ -154,7 +281,7 @@ def log_reading(raw: dict, result: dict, source: str = "manual"):
 class SerialReader:
     """
     Background thread that reads from the master Arduino and parses:
-        MASTER: <MQ2>,<MQ3>,<MQ4>,<MQ5>  ||  SLAVE: <MQ6>,<MQ7>,<MQ8>,<MQ135>
+        MASTER: <MQ5>,<MQ135>,<MQ8>,<MQ3>  ||  SLAVE: <MQ7>,<MQ6>,<MQ2>,<MQ4>
     """
     def __init__(self):
         self.ser        = None
@@ -162,12 +289,11 @@ class SerialReader:
         self.thread     = None
         self.port       = None
         self.baud       = 9600
-        self.latest     = None          # latest parsed + predicted reading
-        self.error      = None          # last error string
-        self.raw_lines  = []            # last 50 raw serial lines (for debug)
+        self.latest     = None
+        self.error      = None
+        self.raw_lines  = []
         self.lock       = threading.Lock()
 
-    # ── Public interface ───────────────────────────────────────────────────────
     def connect(self, port: str, baud: int = 9600) -> bool:
         if self.running:
             self.disconnect()
@@ -202,12 +328,12 @@ class SerialReader:
             "error":     self.error,
         }
 
-    # ── Background loop ────────────────────────────────────────────────────────
     def _loop(self):
         while self.running:
             try:
                 if self.ser and self.ser.is_open:
                     line = self.ser.readline().decode("utf-8", errors="ignore").strip()
+                    print(line)
                     if line:
                         with self.lock:
                             self.raw_lines.append(line)
@@ -215,8 +341,10 @@ class SerialReader:
                                 self.raw_lines.pop(0)
                         parsed = self._parse(line)
                         if parsed:
-                            result  = run_prediction(parsed)
-                            entry   = log_reading(parsed, result, source="serial")
+                            # Apply calibration before prediction and logging
+                            calibrated = apply_calibration(parsed)
+                            result = run_prediction(calibrated)
+                            entry  = log_reading(calibrated, result, source="serial")
                             with self.lock:
                                 self.latest = entry
             except serial.SerialException as e:
@@ -229,33 +357,24 @@ class SerialReader:
                 time.sleep(0.1)
 
     def _parse(self, line: str) -> dict | None:
-        """
-        Parses:
-            MASTER: 350,120,80,95  ||  SLAVE: 610,55,200,310
-        Maps values to:
-            MQ2,MQ3,MQ4,MQ5 (master)  +  MQ6,MQ7,MQ8,MQ135 (slave)
-        MQ9 defaults to 0.
-        """
         try:
             if "MASTER:" not in line or "SLAVE:" not in line:
                 return None
             master_part, slave_part = line.split("||")
             master_vals = [float(x) for x in master_part.replace("MASTER:", "").strip().split(",")]
             slave_vals  = [float(x) for x in slave_part.replace("SLAVE:", "").strip().split(",")]
-
             if len(master_vals) < 4 or len(slave_vals) < 4:
                 return None
-
             return {
-                "MQ2":   master_vals[0],
-                "MQ3":   master_vals[1],
-                "MQ4":   master_vals[2],
-                "MQ5":   master_vals[3],
-                "MQ6":   slave_vals[0],
-                "MQ7":   slave_vals[1],
-                "MQ8":   slave_vals[2],
-                "MQ9":   0.0,            # not wired; add when available
-                "MQ135": slave_vals[3],
+                "MQ5":   master_vals[0],
+                "MQ135": master_vals[1],
+                "MQ8":   master_vals[2],
+                "MQ3":   master_vals[3],
+                "MQ7":   slave_vals[0],
+                "MQ6":   slave_vals[1],
+                "MQ2":   slave_vals[2],
+                "MQ4":   slave_vals[3],
+                "MQ9":   0.0,
             }
         except Exception:
             return None
@@ -289,9 +408,10 @@ def predict():
     except (ValueError, TypeError):
         return jsonify({"error": "All values must be numeric."}), 400
 
-    raw    = dict(zip(SENSOR_NAMES, vals))
-    result = run_prediction(raw)
-    entry  = log_reading(raw, result)
+    raw = dict(zip(SENSOR_NAMES, vals))
+    calibrated = apply_calibration(raw)
+    result = run_prediction(calibrated)
+    entry  = log_reading(calibrated, result)
     result["timestamp"] = entry["timestamp"]
     return jsonify(result)
 
@@ -299,10 +419,81 @@ def predict():
 # ── Live reading (from serial) ─────────────────────────────────────────────────
 @app.route("/api/live", methods=["GET"])
 def live():
-    """Returns the latest serial reading + prediction (or null if none yet)."""
     with serial_reader.lock:
         data = serial_reader.latest
     return jsonify({"data": data, "serial": serial_reader.status()})
+
+
+# ── Classification mode management ────────────────────────────────────────────
+@app.route("/api/mode", methods=["GET"])
+def get_mode():
+    return jsonify({
+        "active_mode":    active_classification_mode,
+        "effective_mode": get_effective_mode(),
+        "valid_modes":    VALID_MODES,
+        "model_loaded":   model is not None,
+        "descriptions": {
+            "model":     "Pre-trained ML classifier with engineered features",
+            "heuristic": "Dominant-sensor rule-based mapping (no model needed)",
+            "threshold": "Configurable value-range rules (editable via /api/threshold/rules)",
+            "spoilage":  "Specialized detection for food rot, fermentation, and freshness",
+        }
+    })
+
+
+@app.route("/api/mode", methods=["POST"])
+def set_mode():
+    global active_classification_mode
+    data = request.get_json(force=True)
+    new_mode = data.get("mode", "").strip().lower()
+    if new_mode not in VALID_MODES:
+        return jsonify({"error": f"Invalid mode. Choose from: {VALID_MODES}"}), 400
+    active_classification_mode = new_mode
+    print(f"[INFO] Classification mode changed → {new_mode}")
+    return jsonify({
+        "success":        True,
+        "active_mode":    active_classification_mode,
+        "effective_mode": get_effective_mode(),
+    })
+
+
+# ── Threshold rule management ──────────────────────────────────────────────────
+@app.route("/api/threshold/rules", methods=["GET"])
+def get_threshold_rules():
+    return jsonify({"rules": threshold_rules})
+
+
+@app.route("/api/threshold/rules", methods=["POST"])
+def set_threshold_rules():
+    """
+    Replace all threshold rules.
+    Body: { "rules": [ { "sensor": "MQ3", "min": 600, "max": 1023,
+                          "label": "banana", "note": "..." }, ... ] }
+    """
+    global threshold_rules
+    data  = request.get_json(force=True)
+    rules = data.get("rules", [])
+    errors = []
+    for i, r in enumerate(rules):
+        for k in ("sensor", "min", "max", "label"):
+            if k not in r:
+                errors.append(f"Rule {i}: missing field '{k}'")
+        if r.get("sensor") not in SENSOR_NAMES:
+            errors.append(f"Rule {i}: unknown sensor '{r.get('sensor')}'")
+    if errors:
+        return jsonify({"error": "Validation failed", "details": errors}), 400
+
+    threshold_rules = rules
+    return jsonify({"success": True, "rules": threshold_rules})
+
+
+@app.route("/api/threshold/rules/<int:index>", methods=["DELETE"])
+def delete_threshold_rule(index: int):
+    global threshold_rules
+    if index < 0 or index >= len(threshold_rules):
+        return jsonify({"error": "Index out of range"}), 404
+    removed = threshold_rules.pop(index)
+    return jsonify({"success": True, "removed": removed, "rules": threshold_rules})
 
 
 # ── Serial management ──────────────────────────────────────────────────────────
@@ -334,7 +525,6 @@ def serial_disconnect():
 
 @app.route("/api/serial/raw", methods=["GET"])
 def serial_raw():
-    """Last 50 raw lines received from Arduino (useful for debugging)."""
     with serial_reader.lock:
         lines = list(serial_reader.raw_lines)
     return jsonify({"lines": lines[-20:]})
@@ -355,13 +545,15 @@ def get_history():
 @app.route("/api/status", methods=["GET"])
 def status():
     return jsonify({
-        "status":            "ok",
-        "model_loaded":      model is not None,
-        "mode":              "model" if model is not None else "demo",
-        "labels":            LABELS,
-        "sensors":           SENSOR_NAMES,
-        "total_predictions": len(recent_readings),
-        "serial":            serial_reader.status(),
+        "status":               "ok",
+        "model_loaded":         model is not None,
+        "active_mode":          active_classification_mode,
+        "effective_mode":       get_effective_mode(),
+        "labels":               LABELS,
+        "sensors":              SENSOR_NAMES,
+        "total_predictions":    len(recent_readings),
+        "serial":               serial_reader.status(),
+        "threshold_rule_count": len(threshold_rules),
     })
 
 
@@ -382,7 +574,7 @@ if __name__ == "__main__":
     print(f"  Sensors  : {', '.join(SENSOR_NAMES)}")
     print(f"  Features : {len(FEATURE_NAMES)} (with engineered)")
     print(f"  Model    : {'Loaded ✓' if model else 'Demo mode (no model.pkl found)'}")
+    print(f"  Mode     : {active_classification_mode}")
     print("  URL      : http://127.0.0.1:5000")
     print("=" * 60)
-    # use_reloader=False prevents the serial thread from being killed on reload
     app.run(debug=True, host="0.0.0.0", port=5000, use_reloader=False)
