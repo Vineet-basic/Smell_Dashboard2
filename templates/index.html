@@ -4,6 +4,7 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Digital Smell Classifier</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#0a0d14;--s1:#111827;--s2:#1a2236;--bd:#1f2d45;--ac:#6366f1;--ac2:#8b5cf6;--gr:#10b981;--ye:#f59e0b;--re:#ef4444;--cy:#06b6d4;--tx:#e2e8f0;--mu:#64748b;--r:14px}
@@ -157,6 +158,7 @@ tr:hover td{background:rgba(99,102,241,.05)}
             <option value="heuristic">Heuristic</option>
             <option value="threshold">Threshold</option>
             <option value="spoilage">Spoilage Detection</option>
+            <option value="excel">Excel Prediction</option>
         </select>
     </div>
     <div id="mode-desc" style="font-size: 0.8rem; color: var(--mu); min-height: 40px; margin-bottom: 15px;">
@@ -172,6 +174,7 @@ tr:hover td{background:rgba(99,102,241,.05)}
   <div class="card" id="result-card">
     <div class="ct">🔍 Classification Result</div>
     <div class="rl" id="result-label">–</div>
+    <div id="instant-label" style="text-align:center; font-size:0.85rem; color:var(--mu); margin-top:-8px; margin-bottom:12px; font-weight:500;"></div>
     <div class="rn" id="result-note">Connect Arduino or enter values manually.</div>
     <div class="cbw">
       <label><span>Confidence</span><span id="conf-pct">–</span></label>
@@ -204,10 +207,24 @@ tr:hover td{background:rgba(99,102,241,.05)}
   </div>
 </div>
 
+<!-- Trend Chart Row -->
+<div class="card" style="margin-bottom:16px">
+  <div class="ct" style="display:flex; justify-content:space-between; align-items:center">
+    <span>📈 Live Sensor Trends</span>
+    <div style="font-size:0.65rem; color:var(--mu); font-weight:400">Last 50 data points</div>
+  </div>
+  <div style="height:220px; width:100%; position:relative">
+    <canvas id="trendChart"></canvas>
+  </div>
+</div>
+
 <!-- History -->
 <div class="card">
   <div class="st">🕒 Prediction History
-    <button class="btn btn-g" style="padding:5px 12px;font-size:.76rem;min-width:0;flex:none" onclick="loadHistory()">↻ Refresh</button>
+    <div style="margin-left:auto; display:flex; gap:8px">
+        <button class="btn btn-g" style="padding:5px 12px;font-size:.76rem;min-width:0" onclick="exportCSV()">📥 Export CSV</button>
+        <button class="btn btn-g" style="padding:5px 12px;font-size:.76rem;min-width:0" onclick="loadHistory()">↻ Refresh</button>
+    </div>
   </div>
   <div class="tw">
     <table>
@@ -256,8 +273,21 @@ tr:hover td{background:rgba(99,102,241,.05)}
 <script>
 const SENSORS = {{ sensors | tojson }};
 const RISK={MQ7:'high',MQ2:'high',MQ9:'medium',MQ3:'medium',MQ5:'medium',MQ6:'medium',MQ4:'low',MQ8:'low',MQ135:'low'};
-const EMOJI={banana:'🍌',blueberry:'🫐',grape:'🍇',green:'🥬',kiwi:'🥝',mushroom:'🍄',pear:'🍐',red:'🍎',strawberry:'🍓',tomato:'🍅'};
+const EMOJI={
+    apple:'🍎',
+    'good tomato':'🍅',
+    'bad tomato':'🤢',
+    'good banana':'🍌',
+    'bad banana':'🤢',
+    'good potato':'🥔',
+    'alcohol':'🍷',
+    'smoke detected':'🔥',
+    banana:'🍌',blueberry:'🫐',grape:'🍇',green:'🥬',kiwi:'🥝',mushroom:'🍄',pear:'🍐',red:'🍎',strawberry:'🍓',tomato:'🍅',
+    'Spoiled / Toxic':'💀','Spoiling':'🤢','Fermenting':'🍷','Ripe / Aromatic':'🍎','Fresh':'🍏','Clean / Baseline':'✨'
+};
+const COLORS=['#6366f1','#06b6d4','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#f97316','#0ea5e9'];
 let liveMode=false, liveTimer=null;
+let trendChart=null;
 
 // Build sensor grid + bar chart
 (function(){
@@ -295,6 +325,16 @@ function fillInputs(raw,dominant){
 function showResult(data){
   const em=EMOJI[data.label.toLowerCase()]||'🧪';
   document.getElementById('result-label').textContent=em+' '+data.label;
+  
+  const instEl = document.getElementById('instant-label');
+  if(data.raw_label && data.raw_label !== data.label) {
+    const rawEm = EMOJI[data.raw_label.toLowerCase()] || '🧪';
+    instEl.textContent = 'Instant reading: ' + rawEm + ' ' + data.raw_label;
+    instEl.style.display = 'block';
+  } else {
+    instEl.style.display = 'none';
+  }
+
   document.getElementById('result-note').textContent=data.note;
   document.getElementById('result-card').className='card ok';
   const pct=data.confidence!=null?data.confidence.toFixed(1)+'%':'N/A';
@@ -318,6 +358,7 @@ async function manualPredict(){
     if(!r.ok) return toast(d.error||'Error','err');
     showResult(d);
     updateChart(d.dominant_sensor);
+    updateTrendChart(calibrated); // Push to trend chart
     await loadHistory(); await loadStatus();
     toast('Classified!','ok');
   }catch{toast('Network error','err');}
@@ -333,6 +374,7 @@ async function pollLive(){
     if(d.data){
       showResult(d.data);
       fillInputs(d.data.sensor_values, d.data.dominant_sensor);
+      updateTrendChart(d.data.sensor_values); // Push to trend chart
       await loadHistory();
     }
     const lines=await fetch('/api/serial/raw').then(r=>r.json());
@@ -466,7 +508,8 @@ async function updateModeUI(status) {
         'model': 'Uses the pre-trained .pkl model with engineered sensor features.',
         'heuristic': 'Classifies based on the strongest sensor reading (rule-of-thumb).',
         'threshold': 'Uses manual value-range rules defined for specific sensors.',
-        'spoilage': 'Analyzes specific gas markers (Ammonia, Alcohol, Methane) to detect food rot or fermentation.'
+        'spoilage': 'Analyzes specific gas markers (Ammonia, Alcohol, Methane) to detect food rot or fermentation.',
+        'excel': 'Compares live sensor values against recorded min/max ranges from the provided Excel file.'
     };
     desc.textContent = descriptions[status.active_mode] || 'Active classification mode.';
   }
@@ -580,6 +623,7 @@ function demoVals(){
 function clearAll(){
   SENSORS.forEach(s=>{document.getElementById(`inp-${s}`).value='';document.getElementById(`bar-${s}`).style.width='0%';document.getElementById(`bv-${s}`).textContent='–';});
   document.getElementById('result-label').textContent='–';
+  document.getElementById('instant-label').textContent='';
   document.getElementById('result-note').textContent='Connect Arduino or enter values manually.';
   document.getElementById('conf-bar').style.width='0%';
   document.getElementById('conf-pct').textContent='–';
@@ -597,7 +641,63 @@ function toast(msg,type='ok'){
   toastT=setTimeout(()=>el.className='',3200);
 }
 
-loadStatus(); loadHistory(); refreshPorts();
+function exportCSV() {
+    window.location.href = '/api/history/export';
+}
+
+// Trend Chart Initialization
+function initTrendChart() {
+    const ctx = document.getElementById('trendChart').getContext('2d');
+    const datasets = SENSORS.map((s, i) => ({
+        label: s,
+        data: [],
+        borderColor: COLORS[i % COLORS.length],
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.3,
+        fill: false
+    }));
+
+    trendChart = new Chart(ctx, {
+        type: 'line',
+        data: { labels: [], datasets: datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            scales: {
+                x: { display: false },
+                y: { 
+                    min: 0, max: 1024,
+                    grid: { color: 'rgba(255,255,255,0.05)' },
+                    ticks: { color: '#64748b', font: { size: 10 } }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { color: '#e2e8f0', boxWidth: 12, padding: 10, font: { size: 10 } }
+                }
+            }
+        }
+    });
+}
+
+function updateTrendChart(raw) {
+    if(!trendChart) return;
+    const now = new Date().toLocaleTimeString();
+    trendChart.data.labels.push(now);
+    SENSORS.forEach((s, i) => {
+        trendChart.data.datasets[i].data.push(raw[s]);
+    });
+    if(trendChart.data.labels.length > 50) {
+        trendChart.data.labels.shift();
+        trendChart.data.datasets.forEach(d => d.data.shift());
+    }
+    trendChart.update('none'); // Update without animation for performance
+}
+
+loadStatus(); loadHistory(); refreshPorts(); initTrendChart();
 </script>
 </body>
 </html>
