@@ -158,6 +158,9 @@ tr:hover td{background:rgba(99,102,241,.05)}
             <option value="heuristic">Heuristic</option>
             <option value="threshold">Threshold</option>
             <option value="spoilage">Spoilage Detection</option>
+            <option value="fruit_classify">Fruit Analysis</option>
+            <option value="safety">Safety Hazards</option>
+            <option value="environment">Environment/Air</option>
             <option value="excel">Excel Prediction</option>
         </select>
     </div>
@@ -283,7 +286,8 @@ const EMOJI={
     'alcohol':'🍷',
     'smoke detected':'🔥',
     banana:'🍌',blueberry:'🫐',grape:'🍇',green:'🥬',kiwi:'🥝',mushroom:'🍄',pear:'🍐',red:'🍎',strawberry:'🍓',tomato:'🍅',
-    'Spoiled / Toxic':'💀','Spoiling':'🤢','Fermenting':'🍷','Ripe / Aromatic':'🍎','Fresh':'🍏','Clean / Baseline':'✨'
+    'Spoiled / Toxic':'💀','Spoiling':'🤢','Fermenting':'🍷','Ripe / Aromatic':'🍎','Fresh':'🍏','Clean / Baseline':'✨',
+    'fresh fruit':'🍏', 'ripe fruit':'🍎', 'over-ripe / fermenting':'🍷', 'spoiled / rotten':'🤢', 'uncertain / clean':'✨'
 };
 const COLORS=['#6366f1','#06b6d4','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#f97316','#0ea5e9'];
 let liveMode=false, liveTimer=null;
@@ -509,6 +513,9 @@ async function updateModeUI(status) {
         'heuristic': 'Classifies based on the strongest sensor reading (rule-of-thumb).',
         'threshold': 'Uses manual value-range rules defined for specific sensors.',
         'spoilage': 'Analyzes specific gas markers (Ammonia, Alcohol, Methane) to detect food rot or fermentation.',
+        'fruit_classify': 'Advanced fruit ripeness and spoilage analyzer using fuzzy matching and VOC signatures.',
+        'safety': 'Detects environmental hazards like CO, LPG leakage, and Smoke/Fire.',
+        'environment': 'Analyzes indoor air quality and common scents (Coffee, Cooking, Stale Air).',
         'excel': 'Compares live sensor values against recorded min/max ranges from the provided Excel file.'
     };
     desc.textContent = descriptions[status.active_mode] || 'Active classification mode.';

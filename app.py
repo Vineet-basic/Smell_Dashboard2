@@ -51,7 +51,7 @@ FEATURE_NAMES = [
 ]
 
 # ─── Classification Mode State ─────────────────────────────────────────────────
-VALID_MODES = ["model", "heuristic", "threshold", "spoilage", "excel", "safety", "environment"]
+VALID_MODES = ["model", "heuristic", "threshold", "spoilage", "excel", "safety", "environment", "fruit_classify"]
 active_classification_mode = "excel"   # Default to excel mode as requested
 
 def get_effective_mode() -> str:
@@ -398,6 +398,80 @@ def run_environment(raw: dict) -> dict:
         "mode":            "environment",
     }
 
+# ─── Fruit Spoilage & Quality Logic ───────────────────────────────────────────
+def run_fruit_classify(raw: dict) -> dict:
+    """
+    Specifically optimized for fruit ripeness and spoilage.
+    Combines fuzzy matching from Excel rules with dynamic gas assessment.
+    """
+    mq3   = raw.get("MQ3", 0)
+    mq135 = raw.get("MQ135", 0)
+    mq4   = raw.get("MQ4", 0)
+    mq2   = raw.get("MQ2", 0)
+    
+    # 1. Identify specific fruit if possible (fuzzy match)
+    detected_fruit = "Fruit"
+    match_conf = 0
+    for smell, sensors in excel_rules.items():
+        if any(f in smell.lower() for f in ["apple", "banana", "tomato", "potato", "berry", "grape"]):
+            matches = 0
+            total = 0
+            for s_name, range_vals in sensors.items():
+                if s_name in raw and range_vals["min"] is not None:
+                    total += 1
+                    # Give some margin (±10%)
+                    margin = (range_vals["max"] - range_vals["min"]) * 0.1
+                    if (range_vals["min"] - margin) <= raw[s_name] <= (range_vals["max"] + margin):
+                        matches += 1
+            if total > 0:
+                score = matches / total
+                if score > match_conf:
+                    match_conf = score
+                    detected_fruit = smell.replace("good ", "").replace("bad ", "").capitalize()
+
+    # 2. Determine State
+    label = "Fresh"
+    stage = "Fresh"
+    note = f"Detected {detected_fruit} appearing fresh."
+    conf = 80.0
+
+    # Critical Spoilage (Decomposition)
+    if mq135 > 450 or mq4 > 600:
+        label = "Spoiled / Rotten"
+        stage = "Danger"
+        note = f"🚨 ALERT: High decomposition gases in {detected_fruit}. Do not consume."
+        conf = min((max(mq135, mq4) / 1023.0) * 100 + 10, 100)
+    
+    # Over-ripe / Fermenting
+    elif mq3 > 700:
+        label = "Over-ripe / Fermenting"
+        stage = "Warning"
+        note = f"🍎 {detected_fruit} is over-ripe or starting to ferment (high alcohol/esters)."
+        conf = min((mq3 / 1023.0) * 100, 100)
+        
+    # Ripe
+    elif mq3 > 500 or mq2 > 400:
+        label = "Ripe / Ready"
+        stage = "Fresh"
+        note = f"🍏 {detected_fruit} is ripe and at peak quality."
+        conf = 90.0
+
+    # Unknown/Baseline
+    elif mq135 < 150:
+        label = "Uncertain / Clean"
+        stage = "Stable"
+        note = f"No significant aromatic profile detected for {detected_fruit}."
+        conf = 50.0
+
+    return {
+        "label":           f"{detected_fruit}: {label}" if detected_fruit != "Fruit" else label,
+        "confidence":      round(conf, 2),
+        "dominant_sensor": max(raw, key=raw.get),
+        "note":            note,
+        "mode":            "fruit_classify",
+        "stage":           stage
+    }
+
 # ─── Prediction dispatcher ─────────────────────────────────────────────────────
 def run_prediction(raw: dict) -> dict:
     """
@@ -436,6 +510,9 @@ def run_prediction(raw: dict) -> dict:
 
     elif mode == "environment":
         return run_environment(raw)
+
+    elif mode == "fruit_classify":
+        return run_fruit_classify(raw)
 
     else:  # heuristic
         smell, note = HEURISTIC_MAP.get(dominant_sensor, ("Unknown", "No clear signature"))
@@ -666,6 +743,7 @@ def get_mode():
             "excel":     "Predictions based on recorded min/max values from Excel file",
             "safety":    "Hazard detection (LPG, CO, Smoke, Hydrogen)",
             "environment": "Common air states (Coffee, Cooking, Stale Air, Fresh)",
+            "fruit_classify": "Advanced fruit ripeness and spoilage analyzer (Fuzzy Logic)",
         }
     })
 
