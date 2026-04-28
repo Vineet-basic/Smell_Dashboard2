@@ -109,13 +109,14 @@ tr:hover td{background:rgba(99,102,241,.05)}
   <div class="badges">
     <span class="pulse off" id="serial-dot"></span>
     <span class="badge" id="serial-badge">Not Connected</span>
+    <span class="badge" id="calib-badge" style="display:none;background:var(--ye);color:var(--bg)">Setting Baseline…</span>
     <span class="badge" id="mode-badge">Checking…</span>
   </div>
 </header>
 
 <div class="stats">
   <div class="stat"><div class="stat-v" id="st-total" style="color:var(--ac)">0</div><div class="stat-l">Predictions</div></div>
-  <div class="stat"><div class="stat-v" id="st-sensors" style="color:var(--cy)">9</div><div class="stat-l">Sensors</div></div>
+  <div class="stat"><div class="stat-v" id="st-sensors" style="color:var(--cy)">{{ sensors|length }}</div><div class="stat-l">Sensors</div></div>
   <div class="stat"><div class="stat-v" id="st-last" style="color:var(--gr)">–</div><div class="stat-l">Last Result</div></div>
   <div class="stat"><div class="stat-v" id="st-live" style="color:var(--ye)">OFF</div><div class="stat-l">Live Mode</div></div>
 </div>
@@ -137,6 +138,7 @@ tr:hover td{background:rgba(99,102,241,.05)}
     </div>
     <div class="btn-row">
       <button class="btn btn-gr" id="btn-connect" onclick="connectSerial()">⚡ Connect</button>
+      <button class="btn btn-g" id="btn-calibrate" onclick="triggerCalibration()" disabled>⚖️ Set Baseline</button>
       <button class="btn btn-re" id="btn-disconnect" onclick="disconnectSerial()" disabled>✕ Disconnect</button>
     </div>
     <div style="margin-top:12px;display:flex;align-items:center;gap:10px">
@@ -151,37 +153,36 @@ tr:hover td{background:rgba(99,102,241,.05)}
 
   <!-- Mode selection card -->
   <div class="card" id="mode-card">
-    <div class="ct">⚙️ Classification Mode</div>
+    <div class="ct">⚙️ Dashboard Mode</div>
     <div class="serial-row" style="margin-bottom: 15px;">
         <select id="mode-sel" onchange="changeMode()">
-            <option value="model">ML Model</option>
-            <option value="heuristic">Heuristic</option>
-            <option value="threshold">Threshold</option>
-            <option value="spoilage">Spoilage Detection</option>
-            <option value="excel">Excel Prediction</option>
+            <option value="normalization">Normalization (General)</option>
+            <option value="spoilage">Fruit Spoilage</option>
         </select>
     </div>
-    <div id="mode-desc" style="font-size: 0.8rem; color: var(--mu); min-height: 40px; margin-bottom: 15px;">
-        Select a mode to see details.
-    </div>
-    <div id="threshold-ui" style="display:none; border-top: 1px solid var(--bd); padding-top: 15px;">
-        <div class="ct" style="font-size: 0.65rem;">Rule Management</div>
-        <button class="btn btn-g" style="width:100%; font-size: 0.75rem; padding: 6px;" onclick="viewThresholdRules()">Manage Rules</button>
+    <div id="mode-desc" style="font-size: 0.8rem; color: var(--mu); min-height: 40px; margin-bottom: 5px;">
+        Select a mode to change classification logic.
     </div>
   </div>
 
   <!-- Result card -->
-  <div class="card" id="result-card">
-    <div class="ct">🔍 Classification Result</div>
+  <div class="card" id="result-card" style="grid-column: span 1">
+    <div class="ct">🔍 Calibration Status & Result</div>
     <div class="rl" id="result-label">–</div>
     <div id="instant-label" style="text-align:center; font-size:0.85rem; color:var(--mu); margin-top:-8px; margin-bottom:12px; font-weight:500;"></div>
     <div class="rn" id="result-note">Connect Arduino or enter values manually.</div>
     <div class="cbw">
-      <label><span>Confidence</span><span id="conf-pct">–</span></label>
-      <div class="bt"><div class="bf" id="conf-bar"></div></div>
+      <label><span>Normalized Activity</span><span id="conf-pct">–</span></label>
+      <div class="bt"><div class="bt-bg" id="conf-bar"></div></div>
     </div>
     <div class="chips" id="meta-chips">
       <div class="chip"><div class="dot"></div>Awaiting input</div>
+    </div>
+    
+    <!-- Normalized activity per sensor -->
+    <div id="norm-activity-list" style="margin-top: 15px; border-top: 1px solid var(--bd); padding-top: 15px;">
+        <div style="font-size: 0.65rem; text-transform: uppercase; color: var(--mu); margin-bottom: 8px;">Activity per Sensor</div>
+        <div id="norm-bars"></div>
     </div>
   </div>
 </div>
@@ -214,11 +215,7 @@ tr:hover td{background:rgba(99,102,241,.05)}
     <div style="font-size:0.65rem; color:var(--mu); font-weight:400">Last 50 data points</div>
   </div>
   <div style="height:220px; width:100%; position:relative">
-    <canvas id="trendChart"></canvas>
-  </div>
-</div>
-
-<!-- History -->
+  <!-- History -->
 <div class="card">
   <div class="st">🕒 Prediction History
     <div style="margin-left:auto; display:flex; gap:8px">
@@ -228,7 +225,7 @@ tr:hover td{background:rgba(99,102,241,.05)}
   </div>
   <div class="tw">
     <table>
-      <thead><tr><th>#</th><th>Time</th><th>Label</th><th>Confidence</th><th>Dominant</th><th>Source</th><th>Mode</th></tr></thead>
+      <thead><tr><th>#</th><th>Time</th><th>Label</th><th>Normalized</th><th>Dominant</th><th>Source</th><th>Mode</th></tr></thead>
       <tbody id="hist-body"><tr><td colspan="7" style="color:var(--mu);text-align:center">No history yet.</td></tr></tbody>
     </table>
   </div>
@@ -237,53 +234,18 @@ tr:hover td{background:rgba(99,102,241,.05)}
 </div>
 <div id="toast"></div>
 
-<!-- Threshold Rules Modal -->
-<div class="modal-overlay" id="rules-modal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <div class="st" style="margin-bottom:0">⚖️ Threshold Rule Editor</div>
-      <div class="modal-close" onclick="closeModal()">×</div>
-    </div>
-    <div style="margin-bottom:16px;font-size:.8rem;color:var(--mu)">
-      Rules are evaluated in order. The first sensor that falls within its min/max range will determine the classification.
-    </div>
-    
-    <div class="rule-row rule-header">
-      <div>Sensor</div>
-      <div>Min</div>
-      <div>Max</div>
-      <div>Label</div>
-      <div>Note</div>
-      <div></div>
-    </div>
-    
-    <div id="rules-list">
-      <!-- Dynamic rules here -->
-    </div>
-    
-    <button class="add-rule-btn" onclick="addNewRule()">+ Add New Rule</button>
-    
-    <div class="btn-row" style="margin-top:24px">
-      <button class="btn btn-g" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-p" onclick="saveRules()">Save Changes</button>
-    </div>
-  </div>
-</div>
-
 <script>
 const SENSORS = {{ sensors | tojson }};
 const RISK={MQ7:'high',MQ2:'high',MQ9:'medium',MQ3:'medium',MQ5:'medium',MQ6:'medium',MQ4:'low',MQ8:'low',MQ135:'low'};
 const EMOJI={
-    apple:'🍎',
-    'good tomato':'🍅',
-    'bad tomato':'🤢',
-    'good banana':'🍌',
-    'bad banana':'🤢',
-    'good potato':'🥔',
-    'alcohol':'🍷',
-    'smoke detected':'🔥',
-    banana:'🍌',blueberry:'🫐',grape:'🍇',green:'🥬',kiwi:'🥝',mushroom:'🍄',pear:'🍐',red:'🍎',strawberry:'🍓',tomato:'🍅',
-    'Spoiled / Toxic':'💀','Spoiling':'🤢','Fermenting':'🍷','Ripe / Aromatic':'🍎','Fresh':'🍏','Clean / Baseline':'✨'
+    'Alcohol':'🍷',
+    'Smoke':'🔥',
+    'Clean Air':'✨',
+    'Activity Detected':'🔍',
+    'Fresh':'🍏',
+    'Ripe':'🍎',
+    'Spoiling':'🤢',
+    'Fermenting':'🍷'
 };
 const COLORS=['#6366f1','#06b6d4','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#f97316','#0ea5e9'];
 let liveMode=false, liveTimer=null;
@@ -323,12 +285,12 @@ function fillInputs(raw,dominant){
 }
 
 function showResult(data){
-  const em=EMOJI[data.label.toLowerCase()]||'🧪';
+  const em=EMOJI[data.label]||'🧪';
   document.getElementById('result-label').textContent=em+' '+data.label;
   
   const instEl = document.getElementById('instant-label');
   if(data.raw_label && data.raw_label !== data.label) {
-    const rawEm = EMOJI[data.raw_label.toLowerCase()] || '🧪';
+    const rawEm = EMOJI[data.raw_label] || '🧪';
     instEl.textContent = 'Instant reading: ' + rawEm + ' ' + data.raw_label;
     instEl.style.display = 'block';
   } else {
@@ -340,11 +302,30 @@ function showResult(data){
   const pct=data.confidence!=null?data.confidence.toFixed(1)+'%':'N/A';
   document.getElementById('conf-pct').textContent=pct;
   document.getElementById('conf-bar').style.width=(data.confidence??0)+'%';
+  
   document.getElementById('meta-chips').innerHTML=`
     <div class="chip"><div class="dot" style="background:var(--cy)"></div>${data.dominant_sensor}</div>
-    <div class="chip"><div class="dot" style="background:${data.mode==='model'?'var(--gr)':'var(--ye)'}"></div>${data.mode}</div>
+    <div class="chip"><div class="dot" style="background:var(--gr)"></div>${data.mode}</div>
     <div class="chip">${new Date(data.timestamp).toLocaleTimeString()}</div>`;
+  
   document.getElementById('st-last').textContent=data.label;
+
+  // Update normalized activity bars per sensor
+  if(data.normalized){
+      const nb=document.getElementById('norm-bars');
+      nb.innerHTML='';
+      Object.entries(data.normalized).forEach(([s,val])=>{
+          const p = Math.round(val*100);
+          nb.innerHTML += `
+            <div style="margin-bottom:8px">
+              <div style="display:flex;justify-content:space-between;font-size:0.7rem;margin-bottom:2px">
+                <span>${s}</span><span>${p}%</span>
+              </div>
+              <div class="bt" style="height:4px"><div class="bf" style="width:${p}%;background:var(--ac)"></div></div>
+            </div>
+          `;
+      });
+  }
 }
 
 async function manualPredict(){
@@ -358,7 +339,6 @@ async function manualPredict(){
     if(!r.ok) return toast(d.error||'Error','err');
     showResult(d);
     updateChart(d.dominant_sensor);
-    updateTrendChart(calibrated); // Push to trend chart
     await loadHistory(); await loadStatus();
     toast('Classified!','ok');
   }catch{toast('Network error','err');}
@@ -374,7 +354,7 @@ async function pollLive(){
     if(d.data){
       showResult(d.data);
       fillInputs(d.data.sensor_values, d.data.dominant_sensor);
-      updateTrendChart(d.data.sensor_values); // Push to trend chart
+      updateTrendChart(d.data.sensor_values);
       await loadHistory();
     }
     const lines=await fetch('/api/serial/raw').then(r=>r.json());
@@ -440,13 +420,31 @@ function updateSerialUI(s){
   const badge=document.getElementById('serial-badge');
   const btnC=document.getElementById('btn-connect');
   const btnD=document.getElementById('btn-disconnect');
+  const btnCal=document.getElementById('btn-calibrate');
+  const calBadge=document.getElementById('calib-badge');
+
   if(s.connected){
     dot.className='pulse'; badge.className='badge on'; badge.textContent=`${s.port} @ ${s.baud}`;
-    btnC.disabled=true; btnD.disabled=false;
+    btnC.disabled=true; btnD.disabled=false; btnCal.disabled=s.calibrating;
+    calBadge.style.display=s.calibrating?'inline-block':'none';
   } else {
     dot.className='pulse off'; badge.className='badge'+(s.error?' err':''); badge.textContent=s.error?'Error':'Not Connected';
-    btnC.disabled=false; btnD.disabled=true;
+    btnC.disabled=false; btnD.disabled=true; btnCal.disabled=true;
+    calBadge.style.display='none';
   }
+}
+
+async function triggerCalibration(){
+  try{
+    const r=await fetch('/api/calibrate',{method:'POST'});
+    const d=await r.json();
+    if(d.success){
+      toast('Setting baseline. Please keep air clean.','ok');
+      await loadStatus();
+    } else {
+      toast(d.error||'Failed to start calibration','err');
+    }
+  }catch{toast('Network error','err');}
 }
 
 async function loadHistory(){
@@ -463,156 +461,31 @@ async function loadHistory(){
       <td>${r.confidence!=null?r.confidence.toFixed(1)+'%':'–'}</td>
       <td><code style="font-family:'JetBrains Mono',monospace;font-size:.76rem;color:var(--cy)">${r.dominant_sensor}</code></td>
       <td><span style="font-size:.7rem;color:var(--mu)">${r.source||'manual'}</span></td>
-      <td><span style="padding:3px 9px;border-radius:99px;font-size:.7rem;font-weight:600;background:${r.mode==='model'?'rgba(16,185,129,.15)':r.mode==='threshold'?'rgba(6,182,212,.12)':r.mode==='spoilage'?'rgba(239,68,68,.12)':'rgba(245,158,11,.12)'};color:${r.mode==='model'?'var(--gr)':r.mode==='threshold'?'var(--cy)':r.mode==='spoilage'?'var(--re)':'var(--ye)'}">${r.mode}</span></td>
+      <td><span style="padding:3px 9px;border-radius:99px;font-size:.7rem;font-weight:600;background:rgba(245,158,11,.12);color:var(--ye)">${r.mode}</span></td>
     </tr>`).join('');
   }catch{}
-}
-
-async function changeMode(){
-  const mode = document.getElementById('mode-sel').value;
-  try {
-    const r = await fetch('/api/mode', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({mode})
-    });
-    const d = await r.json();
-    if (d.success) {
-      toast(`Mode changed to ${mode}`, 'ok');
-      await loadStatus();
-    } else {
-      toast(d.error || 'Error changing mode', 'err');
-    }
-  } catch (e) {
-    toast('Network error', 'err');
-  }
-}
-
-async function updateModeUI(status) {
-  const sel = document.getElementById('mode-sel');
-  const desc = document.getElementById('mode-desc');
-  const tUi = document.getElementById('threshold-ui');
-  const b = document.getElementById('mode-badge');
-  
-  sel.value = status.active_mode;
-  
-  if (status.active_mode !== status.effective_mode) {
-    b.textContent = `${status.effective_mode.toUpperCase()} (FALLBACK)`;
-    b.className = 'badge demo';
-    desc.innerHTML = `<span style="color:var(--re);font-weight:600">⚠️ Fallback active.</span><br>${status.active_mode} mode requested but unavailable. Currently using <strong>${status.effective_mode}</strong>.`;
-  } else {
-    b.textContent = status.active_mode.toUpperCase();
-    b.className = 'badge ' + (status.active_mode === 'model' ? 'on' : 'demo');
-    
-    const descriptions = {
-        'model': 'Uses the pre-trained .pkl model with engineered sensor features.',
-        'heuristic': 'Classifies based on the strongest sensor reading (rule-of-thumb).',
-        'threshold': 'Uses manual value-range rules defined for specific sensors.',
-        'spoilage': 'Analyzes specific gas markers (Ammonia, Alcohol, Methane) to detect food rot or fermentation.',
-        'excel': 'Compares live sensor values against recorded min/max ranges from the provided Excel file.'
-    };
-    desc.textContent = descriptions[status.active_mode] || 'Active classification mode.';
-  }
-  
-  tUi.style.display = status.active_mode === 'threshold' ? 'block' : 'none';
-}
-
-function viewThresholdRules() {
-    document.getElementById('rules-modal').classList.add('show');
-    loadRules();
-}
-
-function closeModal() {
-    document.getElementById('rules-modal').classList.remove('show');
-}
-
-async function loadRules() {
-    try {
-        const r = await fetch('/api/threshold/rules');
-        const d = await r.json();
-        renderRules(d.rules);
-    } catch (e) {
-        toast('Failed to load rules', 'err');
-    }
-}
-
-function renderRules(rules) {
-    const list = document.getElementById('rules-list');
-    list.innerHTML = '';
-    rules.forEach((rule, i) => {
-        const row = document.createElement('div');
-        row.className = 'rule-row';
-        row.innerHTML = `
-            <select class="r-sensor">
-                ${SENSORS.map(s => `<option value="${s}" ${s === rule.sensor ? 'selected' : ''}>${s}</option>`).join('')}
-            </select>
-            <input type="number" class="r-min" value="${rule.min}" placeholder="Min">
-            <input type="number" class="r-max" value="${rule.max}" placeholder="Max">
-            <input type="text" class="r-label" value="${rule.label}" placeholder="Label">
-            <input type="text" class="r-note" value="${rule.note || ''}" placeholder="Note">
-            <button class="btn btn-re" style="padding:4px; min-width:0" onclick="removeRuleRow(this)">×</button>
-        `;
-        list.appendChild(row);
-    });
-}
-
-function addNewRule() {
-    const list = document.getElementById('rules-list');
-    const row = document.createElement('div');
-    row.className = 'rule-row';
-    row.innerHTML = `
-        <select class="r-sensor">
-            ${SENSORS.map(s => `<option value="${s}">${s}</option>`).join('')}
-        </select>
-        <input type="number" class="r-min" value="500" placeholder="Min">
-        <input type="number" class="r-max" value="1023" placeholder="Max">
-        <input type="text" class="r-label" value="unknown" placeholder="Label">
-        <input type="text" class="r-note" value="" placeholder="Note">
-        <button class="btn btn-re" style="padding:4px; min-width:0" onclick="removeRuleRow(this)">×</button>
-    `;
-    list.appendChild(row);
-}
-
-function removeRuleRow(btn) {
-    btn.parentElement.remove();
-}
-
-async function saveRules() {
-    const rows = document.querySelectorAll('#rules-list .rule-row');
-    const rules = Array.from(rows).map(row => ({
-        sensor: row.querySelector('.r-sensor').value,
-        min: parseInt(row.querySelector('.r-min').value),
-        max: parseInt(row.querySelector('.r-max').value),
-        label: row.querySelector('.r-label').value,
-        note: row.querySelector('.r-note').value
-    }));
-    
-    try {
-        const r = await fetch('/api/threshold/rules', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({rules})
-        });
-        if (r.ok) {
-            toast('Rules saved successfully', 'ok');
-            closeModal();
-        } else {
-            const d = await r.json();
-            toast(d.error || 'Failed to save rules', 'err');
-        }
-    } catch (e) {
-        toast('Network error', 'err');
-    }
 }
 
 async function loadStatus(){
   try{
     const r=await fetch('/api/status');
     const d=await r.json();
-    updateModeUI(d);
     document.getElementById('st-total').textContent=d.total_predictions;
+    document.getElementById('mode-sel').value=d.active_mode;
     updateSerialUI(d.serial);
   }catch{}
+}
+
+async function changeMode(){
+  const m=document.getElementById('mode-sel').value;
+  try{
+    const r=await fetch('/api/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
+    const d=await r.json();
+    if(d.success) {
+      toast(`Mode changed to ${m}`,'ok');
+      await loadStatus();
+    }
+  }catch{toast('Failed to change mode','err');}
 }
 
 function demoVals(){
@@ -630,6 +503,7 @@ function clearAll(){
   document.getElementById('meta-chips').innerHTML='<div class="chip"><div class="dot"></div>Awaiting input</div>';
   document.getElementById('result-card').className='card';
   document.getElementById('st-last').textContent='–';
+  document.getElementById('norm-bars').innerHTML='';
 }
 
 let toastT;
@@ -694,7 +568,6 @@ function updateTrendChart(raw) {
         trendChart.data.labels.shift();
         trendChart.data.datasets.forEach(d => d.data.shift());
     }
-    trendChart.update('none'); // Update without animation for performance
 }
 
 loadStatus(); loadHistory(); refreshPorts(); initTrendChart();
