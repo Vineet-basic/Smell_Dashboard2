@@ -229,8 +229,8 @@
     },
     "alcohol": {
         "MQ2": {
-            "min": 601.0,
-            "max": 1023.0
+            "min": 200.0,
+            "max": 500.0
         },
         "MQ3": {
             "min": 601.0,
@@ -253,8 +253,8 @@
             "max": null
         },
         "MQ8": {
-            "min": null,
-            "max": null
+            "min": 700.0,
+            "max": 1023.0
         },
         "MQ9": {
             "min": null,
@@ -275,8 +275,8 @@
             "max": 1023.0
         },
         "MQ4": {
-            "min": null,
-            "max": null
+            "min": 530.0,
+            "max": 1023.0
         },
         "MQ5": {
             "min": null,
