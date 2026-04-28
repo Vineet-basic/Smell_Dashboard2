@@ -1,710 +1,1187 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Digital Smell Classifier</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0a0d14;--s1:#111827;--s2:#1a2236;--bd:#1f2d45;--ac:#6366f1;--ac2:#8b5cf6;--gr:#10b981;--ye:#f59e0b;--re:#ef4444;--cy:#06b6d4;--tx:#e2e8f0;--mu:#64748b;--r:14px}
-body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;overflow-x:hidden}
-body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 50% at 20% 10%,rgba(99,102,241,.12),transparent 60%),radial-gradient(ellipse 60% 40% at 80% 80%,rgba(139,92,246,.10),transparent 55%);pointer-events:none;z-index:0}
-.wrap{max-width:1200px;margin:0 auto;padding:28px 16px;position:relative;z-index:1}
-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;flex-wrap:wrap;gap:10px}
-.logo{display:flex;align-items:center;gap:12px}
-.logo-icon{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,var(--ac),var(--ac2));display:grid;place-items:center;font-size:20px;box-shadow:0 0 24px rgba(99,102,241,.35)}
-h1{font-size:1.25rem;font-weight:700;letter-spacing:-.02em}
-h1 span{color:var(--ac)}
-.badges{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.badge{font-size:.7rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;padding:4px 10px;border-radius:99px;border:1px solid var(--bd);color:var(--mu);transition:.3s}
-.badge.on{border-color:var(--gr);color:var(--gr)}
-.badge.demo{border-color:var(--ye);color:var(--ye)}
-.badge.err{border-color:var(--re);color:var(--re)}
-.pulse{width:8px;height:8px;border-radius:50%;background:var(--gr);display:inline-block;animation:pulse 1.8s ease-in-out infinite}
-.pulse.off{background:var(--mu);animation:none}
-@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,.5)}50%{box-shadow:0 0 0 6px rgba(16,185,129,0)}}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
-.stat{background:var(--s2);border:1px solid var(--bd);border-radius:10px;padding:14px;text-align:center}
-.stat-v{font-size:1.5rem;font-weight:700}
-.stat-l{font-size:.7rem;color:var(--mu);margin-top:2px}
-.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-bottom:16px}
-.card{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);padding:20px;transition:border-color .25s}
-.card:hover{border-color:rgba(99,102,241,.35)}
-.card.ok{border-color:rgba(99,102,241,.5)}
-.card.err{border-color:rgba(239,68,68,.4)}
-.ct{font-size:.72rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mu);margin-bottom:14px}
-.serial-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
-select,input[type=text],input[type=number]{background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:9px 11px;color:var(--tx);font-family:'JetBrains Mono',monospace;font-size:.85rem;outline:none;transition:.2s}
-select:focus,input:focus{border-color:var(--ac);box-shadow:0 0 0 3px rgba(99,102,241,.18)}
-select{flex:1;min-width:120px}
-.sg{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.sf label{display:block;font-size:.7rem;font-weight:600;color:var(--mu);margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em}
-.sf input{width:100%}
-.sf.live input{border-color:var(--gr);color:var(--gr)}
-.btn-row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
-.btn{flex:1;min-width:110px;padding:10px 16px;border:none;border-radius:9px;font-family:'Inter',sans-serif;font-size:.88rem;font-weight:600;cursor:pointer;transition:.15s}
-.btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(0,0,0,.35)}
-.btn:active{transform:none}
-.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
-.btn-p{background:linear-gradient(135deg,var(--ac),var(--ac2));color:#fff;box-shadow:0 4px 14px rgba(99,102,241,.4)}
-.btn-g{background:var(--s2);border:1px solid var(--bd);color:var(--mu)}
-.btn-gr{background:rgba(16,185,129,.15);border:1px solid var(--gr);color:var(--gr)}
-.btn-re{background:rgba(239,68,68,.12);border:1px solid var(--re);color:var(--re)}
-.rl{font-size:1.9rem;font-weight:700;letter-spacing:-.03em;background:linear-gradient(90deg,var(--ac),var(--cy));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px;min-height:48px}
-.rn{font-size:.88rem;color:var(--mu);margin-bottom:16px;min-height:22px}
-.cbw{margin-bottom:16px}
-.cbw label{font-size:.75rem;color:var(--mu);margin-bottom:5px;display:flex;justify-content:space-between}
-.bt{height:8px;background:var(--s2);border-radius:99px;overflow:hidden}
-.bf{height:100%;width:0%;border-radius:99px;background:linear-gradient(90deg,var(--ac),var(--cy));transition:width .7s cubic-bezier(.4,0,.2,1)}
-.chips{display:flex;gap:8px;flex-wrap:wrap}
-.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:99px;background:var(--s2);border:1px solid var(--bd);font-size:.76rem;font-weight:500;color:var(--mu)}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--ac)}
-.bc{display:flex;flex-direction:column;gap:9px}
-.br{display:flex;align-items:center;gap:9px}
-.br .bl{font-size:.76rem;font-weight:600;width:50px;color:var(--mu);flex-shrink:0;font-family:'JetBrains Mono',monospace}
-.br .btr{flex:1;height:10px;background:var(--s2);border-radius:99px;overflow:hidden}
-.br .bfi{height:100%;width:0%;border-radius:99px;transition:width .6s cubic-bezier(.4,0,.2,1);background:linear-gradient(90deg,var(--ac),var(--cy))}
-.br .bfi.dom{background:linear-gradient(90deg,var(--ye),var(--re))}
-.br .bv{font-family:'JetBrains Mono',monospace;font-size:.74rem;color:var(--mu);width:38px;text-align:right;flex-shrink:0}
-.st{font-size:1rem;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px}
-.tw{overflow-x:auto;border-radius:10px}
-table{width:100%;border-collapse:collapse;font-size:.81rem}
-thead tr{background:var(--s2)}
-th{padding:9px 13px;text-align:left;font-weight:600;color:var(--mu);font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
-td{padding:9px 13px;border-top:1px solid var(--bd)}
-tr:hover td{background:rgba(99,102,241,.05)}
-.log-box{background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:.74rem;color:var(--mu);height:100px;overflow-y:auto;margin-top:8px}
-#toast{position:fixed;bottom:24px;right:24px;z-index:999;background:var(--s1);border:1px solid var(--bd);border-radius:10px;padding:12px 18px;font-size:.86rem;box-shadow:0 8px 30px rgba(0,0,0,.5);opacity:0;transform:translateY(10px);transition:.3s;pointer-events:none}
-#toast.show{opacity:1;transform:none}
-#toast.ok{border-color:var(--gr)}
-#toast.err{border-color:var(--re)}
-.spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;margin-right:5px;vertical-align:middle}
-@keyframes spin{to{transform:rotate(360deg)}}
-/* Modal Styles */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:1000;opacity:0;pointer-events:none;transition:.3s;backdrop-filter:blur(4px)}
-.modal-overlay.show{opacity:1;pointer-events:all}
-.modal-content{background:var(--s1);border:1px solid var(--bd);border-radius:var(--r);width:90%;max-width:800px;max-height:85vh;overflow-y:auto;padding:24px;position:relative;transform:scale(.9);transition:.3s}
-.modal-overlay.show .modal-content{transform:scale(1)}
-.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
-.modal-close{cursor:pointer;font-size:1.5rem;color:var(--mu)}
-.rule-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 2fr 40px;gap:8px;margin-bottom:8px;align-items:center}
-.rule-header{font-size:.7rem;font-weight:600;color:var(--mu);text-transform:uppercase;margin-bottom:8px}
-.add-rule-btn{width:100%;padding:10px;border:1px dashed var(--bd);background:rgba(255,255,255,.03);color:var(--mu);border-radius:8px;cursor:pointer;transition:.2s;margin-top:10px}
-.add-rule-btn:hover{background:rgba(255,255,255,.06);color:var(--tx);border-color:var(--ac)}
-@media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}.sg{grid-template-columns:repeat(2,1fr)}.rule-row{grid-template-columns:1fr 1fr;gap:10px}}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Digital Smell Classifier</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    :root {
+      --bg: #0a0d14;
+      --s1: #111827;
+      --s2: #1a2236;
+      --bd: #1f2d45;
+      --ac: #6366f1;
+      --ac2: #8b5cf6;
+      --gr: #10b981;
+      --ye: #f59e0b;
+      --re: #ef4444;
+      --cy: #06b6d4;
+      --tx: #e2e8f0;
+      --mu: #64748b;
+      --r: 14px
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--tx);
+      min-height: 100vh;
+      overflow-x: hidden
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse 80% 50% at 20% 10%, rgba(99, 102, 241, .12), transparent 60%), radial-gradient(ellipse 60% 40% at 80% 80%, rgba(139, 92, 246, .10), transparent 55%);
+      pointer-events: none;
+      z-index: 0
+    }
+
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 28px 16px;
+      position: relative;
+      z-index: 1
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+      gap: 10px
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px
+    }
+
+    .logo-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--ac), var(--ac2));
+      display: grid;
+      place-items: center;
+      font-size: 20px;
+      box-shadow: 0 0 24px rgba(99, 102, 241, .35)
+    }
+
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -.02em
+    }
+
+    h1 span {
+      color: var(--ac)
+    }
+
+    .badges {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap
+    }
+
+    .badge {
+      font-size: .7rem;
+      font-weight: 600;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 99px;
+      border: 1px solid var(--bd);
+      color: var(--mu);
+      transition: .3s
+    }
+
+    .badge.on {
+      border-color: var(--gr);
+      color: var(--gr)
+    }
+
+    .badge.demo {
+      border-color: var(--ye);
+      color: var(--ye)
+    }
+
+    .badge.err {
+      border-color: var(--re);
+      color: var(--re)
+    }
+
+    .pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--gr);
+      display: inline-block;
+      animation: pulse 1.8s ease-in-out infinite
+    }
+
+    .pulse.off {
+      background: var(--mu);
+      animation: none
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, .5)
+      }
+
+      50% {
+        box-shadow: 0 0 0 6px rgba(16, 185, 129, 0)
+      }
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 20px
+    }
+
+    .stat {
+      background: var(--s2);
+      border: 1px solid var(--bd);
+      border-radius: 10px;
+      padding: 14px;
+      text-align: center
+    }
+
+    .stat-v {
+      font-size: 1.5rem;
+      font-weight: 700
+    }
+
+    .stat-l {
+      font-size: .7rem;
+      color: var(--mu);
+      margin-top: 2px
+    }
+
+    .grid2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px
+    }
+
+    .card {
+      background: var(--s1);
+      border: 1px solid var(--bd);
+      border-radius: var(--r);
+      padding: 20px;
+      transition: border-color .25s
+    }
+
+    .card:hover {
+      border-color: rgba(99, 102, 241, .35)
+    }
+
+    .card.ok {
+      border-color: rgba(99, 102, 241, .5)
+    }
+
+    .card.err {
+      border-color: rgba(239, 68, 68, .4)
+    }
+
+    .ct {
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--mu);
+      margin-bottom: 14px
+    }
+
+    .serial-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 10px
+    }
+
+    select,
+    input[type=text],
+    input[type=number] {
+      background: var(--s2);
+      border: 1px solid var(--bd);
+      border-radius: 8px;
+      padding: 9px 11px;
+      color: var(--tx);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .85rem;
+      outline: none;
+      transition: .2s
+    }
+
+    select:focus,
+    input:focus {
+      border-color: var(--ac);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, .18)
+    }
+
+    select {
+      flex: 1;
+      min-width: 120px
+    }
+
+    .sg {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px
+    }
+
+    .sf label {
+      display: block;
+      font-size: .7rem;
+      font-weight: 600;
+      color: var(--mu);
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: .05em
+    }
+
+    .sf input {
+      width: 100%
+    }
+
+    .sf.live input {
+      border-color: var(--gr);
+      color: var(--gr)
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+      flex-wrap: wrap
+    }
+
+    .btn {
+      flex: 1;
+      min-width: 110px;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 9px;
+      font-family: 'Inter', sans-serif;
+      font-size: .88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: .15s
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, .35)
+    }
+
+    .btn:active {
+      transform: none
+    }
+
+    .btn:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+      transform: none
+    }
+
+    .btn-p {
+      background: linear-gradient(135deg, var(--ac), var(--ac2));
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(99, 102, 241, .4)
+    }
+
+    .btn-g {
+      background: var(--s2);
+      border: 1px solid var(--bd);
+      color: var(--mu)
+    }
+
+    .btn-gr {
+      background: rgba(16, 185, 129, .15);
+      border: 1px solid var(--gr);
+      color: var(--gr)
+    }
+
+    .btn-re {
+      background: rgba(239, 68, 68, .12);
+      border: 1px solid var(--re);
+      color: var(--re)
+    }
+
+    .rl {
+      font-size: 1.9rem;
+      font-weight: 700;
+      letter-spacing: -.03em;
+      background: linear-gradient(90deg, var(--ac), var(--cy));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 6px;
+      min-height: 48px
+    }
+
+    .rn {
+      font-size: .88rem;
+      color: var(--mu);
+      margin-bottom: 16px;
+      min-height: 22px
+    }
+
+    .cbw {
+      margin-bottom: 16px
+    }
+
+    .cbw label {
+      font-size: .75rem;
+      color: var(--mu);
+      margin-bottom: 5px;
+      display: flex;
+      justify-content: space-between
+    }
+
+    .bt {
+      height: 8px;
+      background: var(--s2);
+      border-radius: 99px;
+      overflow: hidden
+    }
+
+    .bf {
+      height: 100%;
+      width: 0%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--ac), var(--cy));
+      transition: width .7s cubic-bezier(.4, 0, .2, 1)
+    }
+
+    .chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 11px;
+      border-radius: 99px;
+      background: var(--s2);
+      border: 1px solid var(--bd);
+      font-size: .76rem;
+      font-weight: 500;
+      color: var(--mu)
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--ac)
+    }
+
+    .bc {
+      display: flex;
+      flex-direction: column;
+      gap: 9px
+    }
+
+    .br {
+      display: flex;
+      align-items: center;
+      gap: 9px
+    }
+
+    .br .bl {
+      font-size: .76rem;
+      font-weight: 600;
+      width: 50px;
+      color: var(--mu);
+      flex-shrink: 0;
+      font-family: 'JetBrains Mono', monospace
+    }
+
+    .br .btr {
+      flex: 1;
+      height: 10px;
+      background: var(--s2);
+      border-radius: 99px;
+      overflow: hidden
+    }
+
+    .br .bfi {
+      height: 100%;
+      width: 0%;
+      border-radius: 99px;
+      transition: width .6s cubic-bezier(.4, 0, .2, 1);
+      background: linear-gradient(90deg, var(--ac), var(--cy))
+    }
+
+    .br .bfi.dom {
+      background: linear-gradient(90deg, var(--ye), var(--re))
+    }
+
+    .br .bv {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .74rem;
+      color: var(--mu);
+      width: 38px;
+      text-align: right;
+      flex-shrink: 0
+    }
+
+    .st {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px
+    }
+
+    .tw {
+      overflow-x: auto;
+      border-radius: 10px
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .81rem
+    }
+
+    thead tr {
+      background: var(--s2)
+    }
+
+    th {
+      padding: 9px 13px;
+      text-align: left;
+      font-weight: 600;
+      color: var(--mu);
+      font-size: .7rem;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      white-space: nowrap
+    }
+
+    td {
+      padding: 9px 13px;
+      border-top: 1px solid var(--bd)
+    }
+
+    tr:hover td {
+      background: rgba(99, 102, 241, .05)
+    }
+
+    .log-box {
+      background: var(--s2);
+      border: 1px solid var(--bd);
+      border-radius: 8px;
+      padding: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .74rem;
+      color: var(--mu);
+      height: 100px;
+      overflow-y: auto;
+      margin-top: 8px
+    }
+
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 999;
+      background: var(--s1);
+      border: 1px solid var(--bd);
+      border-radius: 10px;
+      padding: 12px 18px;
+      font-size: .86rem;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, .5);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: .3s;
+      pointer-events: none
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: none
+    }
+
+    #toast.ok {
+      border-color: var(--gr)
+    }
+
+    #toast.err {
+      border-color: var(--re)
+    }
+
+    .spin {
+      display: inline-block;
+      width: 13px;
+      height: 13px;
+      border: 2px solid rgba(255, 255, 255, .25);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      margin-right: 5px;
+      vertical-align: middle
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg)
+      }
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      pointer-events: none;
+      transition: .3s;
+      backdrop-filter: blur(4px)
+    }
+
+    .modal-overlay.show {
+      opacity: 1;
+      pointer-events: all
+    }
+
+    .modal-content {
+      background: var(--s1);
+      border: 1px solid var(--bd);
+      border-radius: var(--r);
+      width: 90%;
+      max-width: 800px;
+      max-height: 85vh;
+      overflow-y: auto;
+      padding: 24px;
+      position: relative;
+      transform: scale(.9);
+      transition: .3s
+    }
+
+    .modal-overlay.show .modal-content {
+      transform: scale(1)
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px
+    }
+
+    .modal-close {
+      cursor: pointer;
+      font-size: 1.5rem;
+      color: var(--mu)
+    }
+
+    .rule-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr 2fr 40px;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: center
+    }
+
+    .rule-header {
+      font-size: .7rem;
+      font-weight: 600;
+      color: var(--mu);
+      text-transform: uppercase;
+      margin-bottom: 8px
+    }
+
+    .add-rule-btn {
+      width: 100%;
+      padding: 10px;
+      border: 1px dashed var(--bd);
+      background: rgba(255, 255, 255, .03);
+      color: var(--mu);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: .2s;
+      margin-top: 10px
+    }
+
+    .add-rule-btn:hover {
+      background: rgba(255, 255, 255, .06);
+      color: var(--tx);
+      border-color: var(--ac)
+    }
+
+    @media(max-width:640px) {
+      .stats {
+        grid-template-columns: repeat(2, 1fr)
+      }
+
+      .sg {
+        grid-template-columns: repeat(2, 1fr)
+      }
+
+      .rule-row {
+        grid-template-columns: 1fr 1fr;
+        gap: 10px
+      }
+    }
+  </style>
 </head>
+
 <body>
-<div class="wrap">
+  <div class="wrap">
 
-<header>
-  <div class="logo">
-    <div class="logo-icon">👃</div>
-    <div>
-      <h1>Digital <span>Smell</span> Classifier</h1>
-      <div style="font-size:.72rem;color:var(--mu);margin-top:2px">MQ Sensor Array · Arduino Serial</div>
-    </div>
-  </div>
-  <div class="badges">
-    <span class="pulse off" id="serial-dot"></span>
-    <span class="badge" id="serial-badge">Not Connected</span>
-    <span class="badge" id="mode-badge">Checking…</span>
-  </div>
-</header>
+    <header>
+      <div class="logo">
+        <div class="logo-icon">👃</div>
+        <div>
+          <h1>Digital <span>Smell</span> Classifier</h1>
+          <div style="font-size:.72rem;color:var(--mu);margin-top:2px">MQ Sensor Array · Arduino Serial</div>
+        </div>
+      </div>
+      <div class="badges">
+        <span class="pulse off" id="serial-dot"></span>
+        <span class="badge" id="serial-badge">Not Connected</span>
+        <span class="badge" id="calib-badge" style="display:none;background:var(--ye);color:var(--bg)">Setting
+          Baseline…</span>
+        <span class="badge" id="mode-badge">Checking…</span>
+      </div>
+    </header>
 
-<div class="stats">
-  <div class="stat"><div class="stat-v" id="st-total" style="color:var(--ac)">0</div><div class="stat-l">Predictions</div></div>
-  <div class="stat"><div class="stat-v" id="st-sensors" style="color:var(--cy)">9</div><div class="stat-l">Sensors</div></div>
-  <div class="stat"><div class="stat-v" id="st-last" style="color:var(--gr)">–</div><div class="stat-l">Last Result</div></div>
-  <div class="stat"><div class="stat-v" id="st-live" style="color:var(--ye)">OFF</div><div class="stat-l">Live Mode</div></div>
-</div>
-
-<!-- Serial + Result row -->
-<div class="grid2">
-
-  <!-- Serial card -->
-  <div class="card" id="serial-card">
-    <div class="ct">🔌 Arduino Serial Port</div>
-    <div class="serial-row">
-      <select id="port-sel"><option value="">— Select Port —</option></select>
-      <select id="baud-sel" style="width:100px">
-        <option value="9600" selected>9600</option>
-        <option value="115200">115200</option>
-        <option value="57600">57600</option>
-      </select>
-      <button class="btn btn-g" style="flex:none;padding:9px 12px" onclick="refreshPorts()" title="Refresh ports">↻</button>
-    </div>
-    <div class="btn-row">
-      <button class="btn btn-gr" id="btn-connect" onclick="connectSerial()">⚡ Connect</button>
-      <button class="btn btn-re" id="btn-disconnect" onclick="disconnectSerial()" disabled>✕ Disconnect</button>
-    </div>
-    <div style="margin-top:12px;display:flex;align-items:center;gap:10px">
-      <label style="font-size:.8rem;color:var(--mu)">Live Poll</label>
-      <div id="live-toggle" onclick="toggleLive()" style="cursor:pointer;width:38px;height:20px;border-radius:99px;background:var(--s2);border:1px solid var(--bd);position:relative;transition:.3s">
-        <div id="live-knob" style="width:14px;height:14px;border-radius:50%;background:var(--mu);position:absolute;top:2px;left:2px;transition:.3s"></div>
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-v" id="st-total" style="color:var(--ac)">0</div>
+        <div class="stat-l">Predictions</div>
+      </div>
+      <div class="stat">
+        <div class="stat-v" id="st-sensors" style="color:var(--cy)">{{ sensors|length }}</div>
+        <div class="stat-l">Sensors</div>
+      </div>
+      <div class="stat">
+        <div class="stat-v" id="st-last" style="color:var(--gr)">–</div>
+        <div class="stat-l">Last Result</div>
+      </div>
+      <div class="stat">
+        <div class="stat-v" id="st-live" style="color:var(--ye)">OFF</div>
+        <div class="stat-l">Live Mode</div>
       </div>
     </div>
-    <div class="ct" style="margin-top:14px;margin-bottom:4px">Raw Serial Log</div>
-    <div class="log-box" id="raw-log">Waiting for data…</div>
-  </div>
 
-  <!-- Mode selection card -->
-  <div class="card" id="mode-card">
-    <div class="ct">⚙️ Classification Mode</div>
-    <div class="serial-row" style="margin-bottom: 15px;">
-        <select id="mode-sel" onchange="changeMode()">
-            <option value="model">ML Model</option>
-            <option value="heuristic">Heuristic</option>
-            <option value="threshold">Threshold</option>
-            <option value="spoilage">Spoilage Detection</option>
-            <option value="fruit_classify">Fruit Analysis</option>
-            <option value="safety">Safety Hazards</option>
-            <option value="environment">Environment/Air</option>
-            <option value="excel">Excel Prediction</option>
-        </select>
+    <!-- Serial + Result row -->
+    <div class="grid2">
+
+      <!-- Serial card -->
+      <div class="card" id="serial-card">
+        <div class="ct">🔌 Arduino Serial Port</div>
+        <div class="serial-row">
+          <select id="port-sel">
+            <option value="">— Select Port —</option>
+          </select>
+          <select id="baud-sel" style="width:100px">
+            <option value="9600" selected>9600</option>
+            <option value="115200">115200</option>
+            <option value="57600">57600</option>
+          </select>
+          <button class="btn btn-g" style="flex:none;padding:9px 12px" onclick="refreshPorts()"
+            title="Refresh ports">↻</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-gr" id="btn-connect" onclick="connectSerial()">⚡ Connect</button>
+          <button class="btn btn-g" id="btn-calibrate" onclick="triggerCalibration()" disabled>⚖️ Set Baseline</button>
+          <button class="btn btn-re" id="btn-disconnect" onclick="disconnectSerial()" disabled>✕ Disconnect</button>
+        </div>
+        <div style="margin-top:12px;display:flex;align-items:center;gap:10px">
+          <label style="font-size:.8rem;color:var(--mu)">Live Poll</label>
+          <div id="live-toggle" onclick="toggleLive()"
+            style="cursor:pointer;width:38px;height:20px;border-radius:99px;background:var(--s2);border:1px solid var(--bd);position:relative;transition:.3s">
+            <div id="live-knob"
+              style="width:14px;height:14px;border-radius:50%;background:var(--mu);position:absolute;top:2px;left:2px;transition:.3s">
+            </div>
+          </div>
+        </div>
+        <div class="ct" style="margin-top:14px;margin-bottom:4px">Raw Serial Log</div>
+        <div class="log-box" id="raw-log">Waiting for data…</div>
+      </div>
+
+      <!-- Mode selection card -->
+      <div class="card" id="mode-card">
+        <div class="ct">⚙️ Dashboard Mode</div>
+        <div class="serial-row" style="margin-bottom: 15px;">
+          <select id="mode-sel" onchange="changeMode()">
+            <option value="normalization">Normalization (General)</option>
+            <option value="spoilage">Fruit Spoilage</option>
+          </select>
+        </div>
+        <div id="mode-desc" style="font-size: 0.8rem; color: var(--mu); min-height: 40px; margin-bottom: 5px;">
+          Select a mode to change classification logic.
+        </div>
+      </div>
+
+      <!-- Result card -->
+      <div class="card" id="result-card" style="grid-column: span 1">
+        <div class="ct">🔍 Calibration Status & Result</div>
+        <div class="rl" id="result-label">–</div>
+        <div id="instant-label"
+          style="text-align:center; font-size:0.85rem; color:var(--mu); margin-top:-8px; margin-bottom:12px; font-weight:500;">
+        </div>
+        <div class="rn" id="result-note">Connect Arduino or enter values manually.</div>
+        <div class="cbw">
+          <label><span>Normalized Activity</span><span id="conf-pct">–</span></label>
+          <div class="bt">
+            <div class="bt-bg" id="conf-bar"></div>
+          </div>
+        </div>
+        <div class="chips" id="meta-chips">
+          <div class="chip">
+            <div class="dot"></div>Awaiting input
+          </div>
+        </div>
+
+        <!-- Normalized activity per sensor -->
+        <div id="norm-activity-list" style="margin-top: 15px; border-top: 1px solid var(--bd); padding-top: 15px;">
+          <div style="font-size: 0.65rem; text-transform: uppercase; color: var(--mu); margin-bottom: 8px;">Activity per
+            Sensor</div>
+          <div id="norm-bars"></div>
+        </div>
+      </div>
     </div>
-    <div id="mode-desc" style="font-size: 0.8rem; color: var(--mu); min-height: 40px; margin-bottom: 15px;">
-        Select a mode to see details.
+
+    <!-- Sensor inputs + bar chart row -->
+    <div class="grid2" style="margin-bottom:16px">
+
+      <!-- Sensor inputs -->
+      <div class="card">
+        <div class="ct">🧪 Sensor Values <span style="font-weight:400;text-transform:none">(0–1023)</span></div>
+        <div class="sg" id="sensor-grid"></div>
+        <div class="btn-row">
+          <button class="btn btn-p" id="btn-predict" onclick="manualPredict()">⚡ Classify</button>
+          <button class="btn btn-g" onclick="demoVals()">🎲 Demo</button>
+          <button class="btn btn-g" onclick="clearAll()">🗑 Clear</button>
+        </div>
+      </div>
+
+      <!-- Bar chart -->
+      <div class="card">
+        <div class="ct">📊 Sensor Distribution</div>
+        <div class="bc" id="bar-chart"></div>
+      </div>
     </div>
-    <div id="threshold-ui" style="display:none; border-top: 1px solid var(--bd); padding-top: 15px;">
-        <div class="ct" style="font-size: 0.65rem;">Rule Management</div>
-        <button class="btn btn-g" style="width:100%; font-size: 0.75rem; padding: 6px;" onclick="viewThresholdRules()">Manage Rules</button>
-    </div>
-  </div>
 
-  <!-- Result card -->
-  <div class="card" id="result-card">
-    <div class="ct">🔍 Classification Result</div>
-    <div class="rl" id="result-label">–</div>
-    <div id="instant-label" style="text-align:center; font-size:0.85rem; color:var(--mu); margin-top:-8px; margin-bottom:12px; font-weight:500;"></div>
-    <div class="rn" id="result-note">Connect Arduino or enter values manually.</div>
-    <div class="cbw">
-      <label><span>Confidence</span><span id="conf-pct">–</span></label>
-      <div class="bt"><div class="bf" id="conf-bar"></div></div>
-    </div>
-    <div class="chips" id="meta-chips">
-      <div class="chip"><div class="dot"></div>Awaiting input</div>
-    </div>
-  </div>
-</div>
+    <!-- Trend Chart Row -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="ct" style="display:flex; justify-content:space-between; align-items:center">
+        <span>📈 Live Sensor Trends</span>
+        <div style="font-size:0.65rem; color:var(--mu); font-weight:400">Last 50 data points</div>
+      </div>
+      <div style="height:220px; width:100%; position:relative">
+        <!-- History -->
+        <div class="card">
+          <div class="st">🕒 Prediction History
+            <div style="margin-left:auto; display:flex; gap:8px">
+              <button class="btn btn-g" style="padding:5px 12px;font-size:.76rem;min-width:0" onclick="exportCSV()">📥
+                Export CSV</button>
+              <button class="btn btn-g" style="padding:5px 12px;font-size:.76rem;min-width:0" onclick="loadHistory()">↻
+                Refresh</button>
+            </div>
+          </div>
+          <div class="tw">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Time</th>
+                  <th>Label</th>
+                  <th>Normalized</th>
+                  <th>Dominant</th>
+                  <th>Source</th>
+                  <th>Mode</th>
+                </tr>
+              </thead>
+              <tbody id="hist-body">
+                <tr>
+                  <td colspan="7" style="color:var(--mu);text-align:center">No history yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-<!-- Sensor inputs + bar chart row -->
-<div class="grid2" style="margin-bottom:16px">
+      </div>
+      <div id="toast"></div>
 
-  <!-- Sensor inputs -->
-  <div class="card">
-    <div class="ct">🧪 Sensor Values <span style="font-weight:400;text-transform:none">(0–1023)</span></div>
-    <div class="sg" id="sensor-grid"></div>
-    <div class="btn-row">
-      <button class="btn btn-p" id="btn-predict" onclick="manualPredict()">⚡ Classify</button>
-      <button class="btn btn-g" onclick="demoVals()">🎲 Demo</button>
-      <button class="btn btn-g" onclick="clearAll()">🗑 Clear</button>
-    </div>
-  </div>
+      <script>
+        const SENSORS = {{ sensors | tojson }};
+        const RISK = { MQ7: 'high', MQ2: 'high', MQ9: 'medium', MQ3: 'medium', MQ5: 'medium', MQ6: 'medium', MQ4: 'low', MQ8: 'low', MQ135: 'low' };
+        const EMOJI = {
+          'Alcohol': '🍷',
+          'Smoke': '🔥',
+          'Clean Air': '✨',
+          'Activity Detected': '🔍',
+          'Fresh': '🍏',
+          'Ripe': '🍎',
+          'Spoiling': '🤢',
+          'Fermenting': '🍷'
+        };
+        const COLORS = ['#6366f1', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#f97316', '#0ea5e9'];
+        let liveMode = false, liveTimer = null;
+        let trendChart = null;
 
-  <!-- Bar chart -->
-  <div class="card">
-    <div class="ct">📊 Sensor Distribution</div>
-    <div class="bc" id="bar-chart"></div>
-  </div>
-</div>
+        // Build sensor grid + bar chart
+        (function () {
+          const g = document.getElementById('sensor-grid'), b = document.getElementById('bar-chart');
+          SENSORS.forEach(s => {
+            const d = document.createElement('div'); d.className = `sf ${RISK[s] || 'low'}`; d.id = `sf-${s}`;
+            d.innerHTML = `<label for="inp-${s}">${s}</label><input id="inp-${s}" type="number" min="0" max="1023" placeholder="0" oninput="updateChart()">`;
+            g.appendChild(d);
+            const r = document.createElement('div'); r.className = 'br';
+            r.innerHTML = `<span class="bl">${s}</span><div class="btr"><div class="bfi" id="bar-${s}"></div></div><span class="bv" id="bv-${s}">–</span>`;
+            b.appendChild(r);
+          });
+        })();
 
-<!-- Trend Chart Row -->
-<div class="card" style="margin-bottom:16px">
-  <div class="ct" style="display:flex; justify-content:space-between; align-items:center">
-    <span>📈 Live Sensor Trends</span>
-    <div style="font-size:0.65rem; color:var(--mu); font-weight:400">Last 50 data points</div>
-  </div>
-  <div style="height:220px; width:100%; position:relative">
-    <canvas id="trendChart"></canvas>
-  </div>
-</div>
+        function updateChart(dominant) {
+          const vals = SENSORS.map(s => parseFloat(document.getElementById(`inp-${s}`).value) || 0);
+          const mx = Math.max(...vals, 1);
+          SENSORS.forEach((s, i) => {
+            document.getElementById(`bar-${s}`).style.width = (vals[i] / mx * 100) + '%';
+            document.getElementById(`bar-${s}`).className = 'bfi' + (s === dominant ? ' dom' : '');
+            document.getElementById(`bv-${s}`).textContent = vals[i] || '–';
+          });
+        }
 
-<!-- History -->
-<div class="card">
-  <div class="st">🕒 Prediction History
-    <div style="margin-left:auto; display:flex; gap:8px">
-        <button class="btn btn-g" style="padding:5px 12px;font-size:.76rem;min-width:0" onclick="exportCSV()">📥 Export CSV</button>
-        <button class="btn btn-g" style="padding:5px 12px;font-size:.76rem;min-width:0" onclick="loadHistory()">↻ Refresh</button>
-    </div>
-  </div>
-  <div class="tw">
-    <table>
-      <thead><tr><th>#</th><th>Time</th><th>Label</th><th>Confidence</th><th>Dominant</th><th>Source</th><th>Mode</th></tr></thead>
-      <tbody id="hist-body"><tr><td colspan="7" style="color:var(--mu);text-align:center">No history yet.</td></tr></tbody>
-    </table>
-  </div>
-</div>
+        function fillInputs(raw, dominant) {
+          SENSORS.forEach(s => {
+            const inp = document.getElementById(`inp-${s}`);
+            inp.value = raw[s] ?? '';
+            const sf = document.getElementById(`sf-${s}`);
+            sf.className = `sf ${RISK[s] || 'low'}${s === dominant ? ' live' : ''}`;
+          });
+          updateChart(dominant);
+        }
 
-</div>
-<div id="toast"></div>
+        function showResult(data) {
+          const em = EMOJI[data.label] || '🧪';
+          document.getElementById('result-label').textContent = em + ' ' + data.label;
 
-<!-- Threshold Rules Modal -->
-<div class="modal-overlay" id="rules-modal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <div class="st" style="margin-bottom:0">⚖️ Threshold Rule Editor</div>
-      <div class="modal-close" onclick="closeModal()">×</div>
-    </div>
-    <div style="margin-bottom:16px;font-size:.8rem;color:var(--mu)">
-      Rules are evaluated in order. The first sensor that falls within its min/max range will determine the classification.
-    </div>
-    
-    <div class="rule-row rule-header">
-      <div>Sensor</div>
-      <div>Min</div>
-      <div>Max</div>
-      <div>Label</div>
-      <div>Note</div>
-      <div></div>
-    </div>
-    
-    <div id="rules-list">
-      <!-- Dynamic rules here -->
-    </div>
-    
-    <button class="add-rule-btn" onclick="addNewRule()">+ Add New Rule</button>
-    
-    <div class="btn-row" style="margin-top:24px">
-      <button class="btn btn-g" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-p" onclick="saveRules()">Save Changes</button>
-    </div>
-  </div>
-</div>
+          const instEl = document.getElementById('instant-label');
+          if (data.raw_label && data.raw_label !== data.label) {
+            const rawEm = EMOJI[data.raw_label] || '🧪';
+            instEl.textContent = 'Instant reading: ' + rawEm + ' ' + data.raw_label;
+            instEl.style.display = 'block';
+          } else {
+            instEl.style.display = 'none';
+          }
 
-<script>
-const SENSORS = {{ sensors | tojson }};
-const RISK={MQ7:'high',MQ2:'high',MQ9:'medium',MQ3:'medium',MQ5:'medium',MQ6:'medium',MQ4:'low',MQ8:'low',MQ135:'low'};
-const EMOJI={
-    apple:'🍎',
-    'good tomato':'🍅',
-    'bad tomato':'🤢',
-    'good banana':'🍌',
-    'bad banana':'🤢',
-    'good potato':'🥔',
-    'alcohol':'🍷',
-    'smoke detected':'🔥',
-    banana:'🍌',blueberry:'🫐',grape:'🍇',green:'🥬',kiwi:'🥝',mushroom:'🍄',pear:'🍐',red:'🍎',strawberry:'🍓',tomato:'🍅',
-    'Spoiled / Toxic':'💀','Spoiling':'🤢','Fermenting':'🍷','Ripe / Aromatic':'🍎','Fresh':'🍏','Clean / Baseline':'✨',
-    'fresh fruit':'🍏', 'ripe fruit':'🍎', 'over-ripe / fermenting':'🍷', 'spoiled / rotten':'🤢', 'uncertain / clean':'✨'
-};
-const COLORS=['#6366f1','#06b6d4','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#f97316','#0ea5e9'];
-let liveMode=false, liveTimer=null;
-let trendChart=null;
+          document.getElementById('result-note').textContent = data.note;
+          document.getElementById('result-card').className = 'card ok';
+          const pct = data.confidence != null ? data.confidence.toFixed(1) + '%' : 'N/A';
+          document.getElementById('conf-pct').textContent = pct;
+          document.getElementById('conf-bar').style.width = (data.confidence ?? 0) + '%';
 
-// Build sensor grid + bar chart
-(function(){
-  const g=document.getElementById('sensor-grid'), b=document.getElementById('bar-chart');
-  SENSORS.forEach(s=>{
-    const d=document.createElement('div'); d.className=`sf ${RISK[s]||'low'}`; d.id=`sf-${s}`;
-    d.innerHTML=`<label for="inp-${s}">${s}</label><input id="inp-${s}" type="number" min="0" max="1023" placeholder="0" oninput="updateChart()">`;
-    g.appendChild(d);
-    const r=document.createElement('div'); r.className='br';
-    r.innerHTML=`<span class="bl">${s}</span><div class="btr"><div class="bfi" id="bar-${s}"></div></div><span class="bv" id="bv-${s}">–</span>`;
-    b.appendChild(r);
-  });
-})();
-
-function updateChart(dominant){
-  const vals=SENSORS.map(s=>parseFloat(document.getElementById(`inp-${s}`).value)||0);
-  const mx=Math.max(...vals,1);
-  SENSORS.forEach((s,i)=>{
-    document.getElementById(`bar-${s}`).style.width=(vals[i]/mx*100)+'%';
-    document.getElementById(`bar-${s}`).className='bfi'+(s===dominant?' dom':'');
-    document.getElementById(`bv-${s}`).textContent=vals[i]||'–';
-  });
-}
-
-function fillInputs(raw,dominant){
-  SENSORS.forEach(s=>{
-    const inp=document.getElementById(`inp-${s}`);
-    inp.value=raw[s]??'';
-    const sf=document.getElementById(`sf-${s}`);
-    sf.className=`sf ${RISK[s]||'low'}${s===dominant?' live':''}`;
-  });
-  updateChart(dominant);
-}
-
-function showResult(data){
-  const em=EMOJI[data.label.toLowerCase()]||'🧪';
-  document.getElementById('result-label').textContent=em+' '+data.label;
-  
-  const instEl = document.getElementById('instant-label');
-  if(data.raw_label && data.raw_label !== data.label) {
-    const rawEm = EMOJI[data.raw_label.toLowerCase()] || '🧪';
-    instEl.textContent = 'Instant reading: ' + rawEm + ' ' + data.raw_label;
-    instEl.style.display = 'block';
-  } else {
-    instEl.style.display = 'none';
-  }
-
-  document.getElementById('result-note').textContent=data.note;
-  document.getElementById('result-card').className='card ok';
-  const pct=data.confidence!=null?data.confidence.toFixed(1)+'%':'N/A';
-  document.getElementById('conf-pct').textContent=pct;
-  document.getElementById('conf-bar').style.width=(data.confidence??0)+'%';
-  document.getElementById('meta-chips').innerHTML=`
+          document.getElementById('meta-chips').innerHTML = `
     <div class="chip"><div class="dot" style="background:var(--cy)"></div>${data.dominant_sensor}</div>
-    <div class="chip"><div class="dot" style="background:${data.mode==='model'?'var(--gr)':'var(--ye)'}"></div>${data.mode}</div>
+    <div class="chip"><div class="dot" style="background:var(--gr)"></div>${data.mode}</div>
     <div class="chip">${new Date(data.timestamp).toLocaleTimeString()}</div>`;
-  document.getElementById('st-last').textContent=data.label;
-}
 
-async function manualPredict(){
-  const vals=SENSORS.map(s=>parseFloat(document.getElementById(`inp-${s}`).value));
-  if(vals.some(v=>isNaN(v))) return toast('Fill in all sensor values.','err');
-  const btn=document.getElementById('btn-predict');
-  btn.disabled=true; btn.innerHTML='<span class="spin"></span>Classifying…';
-  try{
-    const r=await fetch('/api/predict',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sensors:vals})});
-    const d=await r.json();
-    if(!r.ok) return toast(d.error||'Error','err');
-    showResult(d);
-    updateChart(d.dominant_sensor);
-    updateTrendChart(calibrated); // Push to trend chart
-    await loadHistory(); await loadStatus();
-    toast('Classified!','ok');
-  }catch{toast('Network error','err');}
-  finally{btn.disabled=false;btn.innerHTML='⚡ Classify';}
-}
+          document.getElementById('st-last').textContent = data.label;
 
-// Live polling
-async function pollLive(){
-  if(!liveMode) return;
-  try{
-    const r=await fetch('/api/live');
-    const d=await r.json();
-    if(d.data){
-      showResult(d.data);
-      fillInputs(d.data.sensor_values, d.data.dominant_sensor);
-      updateTrendChart(d.data.sensor_values); // Push to trend chart
-      await loadHistory();
-    }
-    const lines=await fetch('/api/serial/raw').then(r=>r.json());
-    const box=document.getElementById('raw-log');
-    box.innerHTML=lines.lines.slice().reverse().map(l=>`<div>${l}</div>`).join('');
-    box.scrollTop=0;
-  }catch{}
-  if(liveMode) liveTimer=setTimeout(pollLive,1200);
-}
+          // Update normalized activity bars per sensor
+          if (data.normalized) {
+            const nb = document.getElementById('norm-bars');
+            nb.innerHTML = '';
+            Object.entries(data.normalized).forEach(([s, val]) => {
+              const p = Math.round(val * 100);
+              nb.innerHTML += `
+            <div style="margin-bottom:8px">
+              <div style="display:flex;justify-content:space-between;font-size:0.7rem;margin-bottom:2px">
+                <span>${s}</span><span>${p}%</span>
+              </div>
+              <div class="bt" style="height:4px"><div class="bf" style="width:${p}%;background:var(--ac)"></div></div>
+            </div>
+          `;
+            });
+          }
+        }
 
-function toggleLive(){
-  liveMode=!liveMode;
-  const knob=document.getElementById('live-knob'), tog=document.getElementById('live-toggle');
-  if(liveMode){
-    knob.style.left='22px'; knob.style.background='var(--gr)';
-    tog.style.background='rgba(16,185,129,.2)'; tog.style.borderColor='var(--gr)';
-    document.getElementById('st-live').textContent='ON';
-    pollLive(); toast('Live mode ON','ok');
-  } else {
-    knob.style.left='2px'; knob.style.background='var(--mu)';
-    tog.style.background='var(--s2)'; tog.style.borderColor='var(--bd)';
-    document.getElementById('st-live').textContent='OFF';
-    clearTimeout(liveTimer); toast('Live mode OFF','err');
-  }
-}
+        async function manualPredict() {
+          const vals = SENSORS.map(s => parseFloat(document.getElementById(`inp-${s}`).value));
+          if (vals.some(v => isNaN(v))) return toast('Fill in all sensor values.', 'err');
+          const btn = document.getElementById('btn-predict');
+          btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Classifying…';
+          try {
+            const r = await fetch('/api/predict', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sensors: vals }) });
+            const d = await r.json();
+            if (!r.ok) return toast(d.error || 'Error', 'err');
+            showResult(d);
+            updateChart(d.dominant_sensor);
+            await loadHistory(); await loadStatus();
+            toast('Classified!', 'ok');
+          } catch { toast('Network error', 'err'); }
+          finally { btn.disabled = false; btn.innerHTML = '⚡ Classify'; }
+        }
 
-// Serial management
-async function refreshPorts(){
-  const r=await fetch('/api/serial/ports');
-  const d=await r.json();
-  const sel=document.getElementById('port-sel');
-  const cur=sel.value;
-  sel.innerHTML='<option value="">— Select Port —</option>';
-  d.ports.forEach(p=>{
-    const o=document.createElement('option');
-    o.value=p.port; o.textContent=`${p.port} – ${p.description}`;
-    if(p.port===cur) o.selected=true;
-    sel.appendChild(o);
-  });
-  if(!d.ports.length) toast('No COM ports found','err');
-}
+        // Live polling
+        async function pollLive() {
+          if (!liveMode) return;
+          try {
+            const r = await fetch('/api/live');
+            const d = await r.json();
+            if (d.data) {
+              showResult(d.data);
+              fillInputs(d.data.sensor_values, d.data.dominant_sensor);
+              updateTrendChart(d.data.sensor_values);
+              await loadHistory();
+            }
+            const lines = await fetch('/api/serial/raw').then(r => r.json());
+            const box = document.getElementById('raw-log');
+            box.innerHTML = lines.lines.slice().reverse().map(l => `<div>${l}</div>`).join('');
+            box.scrollTop = 0;
+          } catch { }
+          if (liveMode) liveTimer = setTimeout(pollLive, 1200);
+        }
 
-async function connectSerial(){
-  const port=document.getElementById('port-sel').value;
-  const baud=document.getElementById('baud-sel').value;
-  if(!port) return toast('Select a COM port first','err');
-  const r=await fetch('/api/serial/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({port,baud:parseInt(baud)})});
-  const d=await r.json();
-  updateSerialUI(d.serial);
-  toast(d.success?`Connected to ${port}`:`Failed: ${d.error}`, d.success?'ok':'err');
-}
+        function toggleLive() {
+          liveMode = !liveMode;
+          const knob = document.getElementById('live-knob'), tog = document.getElementById('live-toggle');
+          if (liveMode) {
+            knob.style.left = '22px'; knob.style.background = 'var(--gr)';
+            tog.style.background = 'rgba(16,185,129,.2)'; tog.style.borderColor = 'var(--gr)';
+            document.getElementById('st-live').textContent = 'ON';
+            pollLive(); toast('Live mode ON', 'ok');
+          } else {
+            knob.style.left = '2px'; knob.style.background = 'var(--mu)';
+            tog.style.background = 'var(--s2)'; tog.style.borderColor = 'var(--bd)';
+            document.getElementById('st-live').textContent = 'OFF';
+            clearTimeout(liveTimer); toast('Live mode OFF', 'err');
+          }
+        }
 
-async function disconnectSerial(){
-  if(liveMode) toggleLive();
-  const r=await fetch('/api/serial/disconnect',{method:'POST'});
-  const d=await r.json();
-  updateSerialUI(d.serial);
-  toast('Disconnected','ok');
-}
+        // Serial management
+        async function refreshPorts() {
+          const r = await fetch('/api/serial/ports');
+          const d = await r.json();
+          const sel = document.getElementById('port-sel');
+          const cur = sel.value;
+          sel.innerHTML = '<option value="">— Select Port —</option>';
+          d.ports.forEach(p => {
+            const o = document.createElement('option');
+            o.value = p.port; o.textContent = `${p.port} – ${p.description}`;
+            if (p.port === cur) o.selected = true;
+            sel.appendChild(o);
+          });
+          if (!d.ports.length) toast('No COM ports found', 'err');
+        }
 
-function updateSerialUI(s){
-  const dot=document.getElementById('serial-dot');
-  const badge=document.getElementById('serial-badge');
-  const btnC=document.getElementById('btn-connect');
-  const btnD=document.getElementById('btn-disconnect');
-  if(s.connected){
-    dot.className='pulse'; badge.className='badge on'; badge.textContent=`${s.port} @ ${s.baud}`;
-    btnC.disabled=true; btnD.disabled=false;
-  } else {
-    dot.className='pulse off'; badge.className='badge'+(s.error?' err':''); badge.textContent=s.error?'Error':'Not Connected';
-    btnC.disabled=false; btnD.disabled=true;
-  }
-}
+        async function connectSerial() {
+          const port = document.getElementById('port-sel').value;
+          const baud = document.getElementById('baud-sel').value;
+          if (!port) return toast('Select a COM port first', 'err');
+          const r = await fetch('/api/serial/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ port, baud: parseInt(baud) }) });
+          const d = await r.json();
+          updateSerialUI(d.serial);
+          toast(d.success ? `Connected to ${port}` : `Failed: ${d.error}`, d.success ? 'ok' : 'err');
+        }
 
-async function loadHistory(){
-  try{
-    const r=await fetch('/api/history?limit=20');
-    const d=await r.json();
-    const rows=[...d.history].reverse();
-    const tbody=document.getElementById('hist-body');
-    if(!rows.length){tbody.innerHTML='<tr><td colspan="7" style="color:var(--mu);text-align:center">No history yet.</td></tr>';return;}
-    tbody.innerHTML=rows.map((r,i)=>`<tr>
-      <td style="color:var(--mu)">${rows.length-i}</td>
+        async function disconnectSerial() {
+          if (liveMode) toggleLive();
+          const r = await fetch('/api/serial/disconnect', { method: 'POST' });
+          const d = await r.json();
+          updateSerialUI(d.serial);
+          toast('Disconnected', 'ok');
+        }
+
+        function updateSerialUI(s) {
+          const dot = document.getElementById('serial-dot');
+          const badge = document.getElementById('serial-badge');
+          const btnC = document.getElementById('btn-connect');
+          const btnD = document.getElementById('btn-disconnect');
+          const btnCal = document.getElementById('btn-calibrate');
+          const calBadge = document.getElementById('calib-badge');
+
+          if (s.connected) {
+            dot.className = 'pulse'; badge.className = 'badge on'; badge.textContent = `${s.port} @ ${s.baud}`;
+            btnC.disabled = true; btnD.disabled = false; btnCal.disabled = s.calibrating;
+            calBadge.style.display = s.calibrating ? 'inline-block' : 'none';
+          } else {
+            dot.className = 'pulse off'; badge.className = 'badge' + (s.error ? ' err' : ''); badge.textContent = s.error ? 'Error' : 'Not Connected';
+            btnC.disabled = false; btnD.disabled = true; btnCal.disabled = true;
+            calBadge.style.display = 'none';
+          }
+        }
+
+        async function triggerCalibration() {
+          try {
+            const r = await fetch('/api/calibrate', { method: 'POST' });
+            const d = await r.json();
+            if (d.success) {
+              toast('Setting baseline. Please keep air clean.', 'ok');
+              await loadStatus();
+            } else {
+              toast(d.error || 'Failed to start calibration', 'err');
+            }
+          } catch { toast('Network error', 'err'); }
+        }
+
+        async function loadHistory() {
+          try {
+            const r = await fetch('/api/history?limit=20');
+            const d = await r.json();
+            const rows = [...d.history].reverse();
+            const tbody = document.getElementById('hist-body');
+            if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" style="color:var(--mu);text-align:center">No history yet.</td></tr>'; return; }
+            tbody.innerHTML = rows.map((r, i) => `<tr>
+      <td style="color:var(--mu)">${rows.length - i}</td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:.74rem">${new Date(r.timestamp).toLocaleTimeString()}</td>
       <td><strong>${r.label}</strong></td>
-      <td>${r.confidence!=null?r.confidence.toFixed(1)+'%':'–'}</td>
+      <td>${r.confidence != null ? r.confidence.toFixed(1) + '%' : '–'}</td>
       <td><code style="font-family:'JetBrains Mono',monospace;font-size:.76rem;color:var(--cy)">${r.dominant_sensor}</code></td>
-      <td><span style="font-size:.7rem;color:var(--mu)">${r.source||'manual'}</span></td>
-      <td><span style="padding:3px 9px;border-radius:99px;font-size:.7rem;font-weight:600;background:${r.mode==='model'?'rgba(16,185,129,.15)':r.mode==='threshold'?'rgba(6,182,212,.12)':r.mode==='spoilage'?'rgba(239,68,68,.12)':'rgba(245,158,11,.12)'};color:${r.mode==='model'?'var(--gr)':r.mode==='threshold'?'var(--cy)':r.mode==='spoilage'?'var(--re)':'var(--ye)'}">${r.mode}</span></td>
+      <td><span style="font-size:.7rem;color:var(--mu)">${r.source || 'manual'}</span></td>
+      <td><span style="padding:3px 9px;border-radius:99px;font-size:.7rem;font-weight:600;background:rgba(245,158,11,.12);color:var(--ye)">${r.mode}</span></td>
     </tr>`).join('');
-  }catch{}
-}
+          } catch { }
+        }
 
-async function changeMode(){
-  const mode = document.getElementById('mode-sel').value;
-  try {
-    const r = await fetch('/api/mode', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({mode})
-    });
-    const d = await r.json();
-    if (d.success) {
-      toast(`Mode changed to ${mode}`, 'ok');
-      await loadStatus();
-    } else {
-      toast(d.error || 'Error changing mode', 'err');
-    }
-  } catch (e) {
-    toast('Network error', 'err');
-  }
-}
-
-async function updateModeUI(status) {
-  const sel = document.getElementById('mode-sel');
-  const desc = document.getElementById('mode-desc');
-  const tUi = document.getElementById('threshold-ui');
-  const b = document.getElementById('mode-badge');
-  
-  sel.value = status.active_mode;
-  
-  if (status.active_mode !== status.effective_mode) {
-    b.textContent = `${status.effective_mode.toUpperCase()} (FALLBACK)`;
-    b.className = 'badge demo';
-    desc.innerHTML = `<span style="color:var(--re);font-weight:600">⚠️ Fallback active.</span><br>${status.active_mode} mode requested but unavailable. Currently using <strong>${status.effective_mode}</strong>.`;
-  } else {
-    b.textContent = status.active_mode.toUpperCase();
-    b.className = 'badge ' + (status.active_mode === 'model' ? 'on' : 'demo');
-    
-    const descriptions = {
-        'model': 'Uses the pre-trained .pkl model with engineered sensor features.',
-        'heuristic': 'Classifies based on the strongest sensor reading (rule-of-thumb).',
-        'threshold': 'Uses manual value-range rules defined for specific sensors.',
-        'spoilage': 'Analyzes specific gas markers (Ammonia, Alcohol, Methane) to detect food rot or fermentation.',
-        'fruit_classify': 'Advanced fruit ripeness and spoilage analyzer using fuzzy matching and VOC signatures.',
-        'safety': 'Detects environmental hazards like CO, LPG leakage, and Smoke/Fire.',
-        'environment': 'Analyzes indoor air quality and common scents (Coffee, Cooking, Stale Air).',
-        'excel': 'Compares live sensor values against recorded min/max ranges from the provided Excel file.'
-    };
-    desc.textContent = descriptions[status.active_mode] || 'Active classification mode.';
-  }
-  
-  tUi.style.display = status.active_mode === 'threshold' ? 'block' : 'none';
-}
-
-function viewThresholdRules() {
-    document.getElementById('rules-modal').classList.add('show');
-    loadRules();
-}
-
-function closeModal() {
-    document.getElementById('rules-modal').classList.remove('show');
-}
-
-async function loadRules() {
-    try {
-        const r = await fetch('/api/threshold/rules');
-        const d = await r.json();
-        renderRules(d.rules);
-    } catch (e) {
-        toast('Failed to load rules', 'err');
-    }
-}
-
-function renderRules(rules) {
-    const list = document.getElementById('rules-list');
-    list.innerHTML = '';
-    rules.forEach((rule, i) => {
-        const row = document.createElement('div');
-        row.className = 'rule-row';
-        row.innerHTML = `
-            <select class="r-sensor">
-                ${SENSORS.map(s => `<option value="${s}" ${s === rule.sensor ? 'selected' : ''}>${s}</option>`).join('')}
-            </select>
-            <input type="number" class="r-min" value="${rule.min}" placeholder="Min">
-            <input type="number" class="r-max" value="${rule.max}" placeholder="Max">
-            <input type="text" class="r-label" value="${rule.label}" placeholder="Label">
-            <input type="text" class="r-note" value="${rule.note || ''}" placeholder="Note">
-            <button class="btn btn-re" style="padding:4px; min-width:0" onclick="removeRuleRow(this)">×</button>
-        `;
-        list.appendChild(row);
-    });
-}
-
-function addNewRule() {
-    const list = document.getElementById('rules-list');
-    const row = document.createElement('div');
-    row.className = 'rule-row';
-    row.innerHTML = `
-        <select class="r-sensor">
-            ${SENSORS.map(s => `<option value="${s}">${s}</option>`).join('')}
-        </select>
-        <input type="number" class="r-min" value="500" placeholder="Min">
-        <input type="number" class="r-max" value="1023" placeholder="Max">
-        <input type="text" class="r-label" value="unknown" placeholder="Label">
-        <input type="text" class="r-note" value="" placeholder="Note">
-        <button class="btn btn-re" style="padding:4px; min-width:0" onclick="removeRuleRow(this)">×</button>
-    `;
-    list.appendChild(row);
-}
-
-function removeRuleRow(btn) {
-    btn.parentElement.remove();
-}
-
-async function saveRules() {
-    const rows = document.querySelectorAll('#rules-list .rule-row');
-    const rules = Array.from(rows).map(row => ({
-        sensor: row.querySelector('.r-sensor').value,
-        min: parseInt(row.querySelector('.r-min').value),
-        max: parseInt(row.querySelector('.r-max').value),
-        label: row.querySelector('.r-label').value,
-        note: row.querySelector('.r-note').value
-    }));
-    
-    try {
-        const r = await fetch('/api/threshold/rules', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({rules})
-        });
-        if (r.ok) {
-            toast('Rules saved successfully', 'ok');
-            closeModal();
-        } else {
+        async function loadStatus() {
+          try {
+            const r = await fetch('/api/status');
             const d = await r.json();
-            toast(d.error || 'Failed to save rules', 'err');
+            document.getElementById('st-total').textContent = d.total_predictions;
+            document.getElementById('mode-sel').value = d.active_mode;
+            updateSerialUI(d.serial);
+          } catch { }
         }
-    } catch (e) {
-        toast('Network error', 'err');
-    }
-}
 
-async function loadStatus(){
-  try{
-    const r=await fetch('/api/status');
-    const d=await r.json();
-    updateModeUI(d);
-    document.getElementById('st-total').textContent=d.total_predictions;
-    updateSerialUI(d.serial);
-  }catch{}
-}
-
-function demoVals(){
-  SENSORS.forEach(s=>{document.getElementById(`inp-${s}`).value=Math.floor(Math.random()*900+50);});
-  updateChart();
-}
-
-function clearAll(){
-  SENSORS.forEach(s=>{document.getElementById(`inp-${s}`).value='';document.getElementById(`bar-${s}`).style.width='0%';document.getElementById(`bv-${s}`).textContent='–';});
-  document.getElementById('result-label').textContent='–';
-  document.getElementById('instant-label').textContent='';
-  document.getElementById('result-note').textContent='Connect Arduino or enter values manually.';
-  document.getElementById('conf-bar').style.width='0%';
-  document.getElementById('conf-pct').textContent='–';
-  document.getElementById('meta-chips').innerHTML='<div class="chip"><div class="dot"></div>Awaiting input</div>';
-  document.getElementById('result-card').className='card';
-  document.getElementById('st-last').textContent='–';
-}
-
-let toastT;
-function toast(msg,type='ok'){
-  const el=document.getElementById('toast');
-  el.textContent=(type==='ok'?'✅ ':'❌ ')+msg;
-  el.className='show '+type;
-  clearTimeout(toastT);
-  toastT=setTimeout(()=>el.className='',3200);
-}
-
-function exportCSV() {
-    window.location.href = '/api/history/export';
-}
-
-// Trend Chart Initialization
-function initTrendChart() {
-    const ctx = document.getElementById('trendChart').getContext('2d');
-    const datasets = SENSORS.map((s, i) => ({
-        label: s,
-        data: [],
-        borderColor: COLORS[i % COLORS.length],
-        borderWidth: 2,
-        pointRadius: 0,
-        tension: 0.3,
-        fill: false
-    }));
-
-    trendChart = new Chart(ctx, {
-        type: 'line',
-        data: { labels: [], datasets: datasets },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: false,
-            scales: {
-                x: { display: false },
-                y: { 
-                    min: 0, max: 1024,
-                    grid: { color: 'rgba(255,255,255,0.05)' },
-                    ticks: { color: '#64748b', font: { size: 10 } }
-                }
-            },
-            plugins: {
-                legend: {
-                    position: 'top',
-                    labels: { color: '#e2e8f0', boxWidth: 12, padding: 10, font: { size: 10 } }
-                }
+        async function changeMode() {
+          const m = document.getElementById('mode-sel').value;
+          try {
+            const r = await fetch('/api/mode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: m }) });
+            const d = await r.json();
+            if (d.success) {
+              toast(`Mode changed to ${m}`, 'ok');
+              await loadStatus();
             }
+          } catch { toast('Failed to change mode', 'err'); }
         }
-    });
-}
 
-function updateTrendChart(raw) {
-    if(!trendChart) return;
-    const now = new Date().toLocaleTimeString();
-    trendChart.data.labels.push(now);
-    SENSORS.forEach((s, i) => {
-        trendChart.data.datasets[i].data.push(raw[s]);
-    });
-    if(trendChart.data.labels.length > 50) {
-        trendChart.data.labels.shift();
-        trendChart.data.datasets.forEach(d => d.data.shift());
-    }
-    trendChart.update('none'); // Update without animation for performance
-}
+        function demoVals() {
+          SENSORS.forEach(s => { document.getElementById(`inp-${s}`).value = Math.floor(Math.random() * 900 + 50); });
+          updateChart();
+        }
 
-loadStatus(); loadHistory(); refreshPorts(); initTrendChart();
-</script>
+        function clearAll() {
+          SENSORS.forEach(s => { document.getElementById(`inp-${s}`).value = ''; document.getElementById(`bar-${s}`).style.width = '0%'; document.getElementById(`bv-${s}`).textContent = '–'; });
+          document.getElementById('result-label').textContent = '–';
+          document.getElementById('instant-label').textContent = '';
+          document.getElementById('result-note').textContent = 'Connect Arduino or enter values manually.';
+          document.getElementById('conf-bar').style.width = '0%';
+          document.getElementById('conf-pct').textContent = '–';
+          document.getElementById('meta-chips').innerHTML = '<div class="chip"><div class="dot"></div>Awaiting input</div>';
+          document.getElementById('result-card').className = 'card';
+          document.getElementById('st-last').textContent = '–';
+          document.getElementById('norm-bars').innerHTML = '';
+        }
+
+        let toastT;
+        function toast(msg, type = 'ok') {
+          const el = document.getElementById('toast');
+          el.textContent = (type === 'ok' ? '✅ ' : '❌ ') + msg;
+          el.className = 'show ' + type;
+          clearTimeout(toastT);
+          toastT = setTimeout(() => el.className = '', 3200);
+        }
+
+        function exportCSV() {
+          window.location.href = '/api/history/export';
+        }
+
+        // Trend Chart Initialization
+        function initTrendChart() {
+          const ctx = document.getElementById('trendChart').getContext('2d');
+          const datasets = SENSORS.map((s, i) => ({
+            label: s,
+            data: [],
+            borderColor: COLORS[i % COLORS.length],
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.3,
+            fill: false
+          }));
+
+          trendChart = new Chart(ctx, {
+            type: 'line',
+            data: { labels: [], datasets: datasets },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: false,
+              scales: {
+                x: { display: false },
+                y: {
+                  min: 0, max: 1024,
+                  grid: { color: 'rgba(255,255,255,0.05)' },
+                  ticks: { color: '#64748b', font: { size: 10 } }
+                }
+              },
+              plugins: {
+                legend: {
+                  position: 'top',
+                  labels: { color: '#e2e8f0', boxWidth: 12, padding: 10, font: { size: 10 } }
+                }
+              }
+            }
+          });
+        }
+
+        function updateTrendChart(raw) {
+          if (!trendChart) return;
+          const now = new Date().toLocaleTimeString();
+          trendChart.data.labels.push(now);
+          SENSORS.forEach((s, i) => {
+            trendChart.data.datasets[i].data.push(raw[s]);
+          });
+          if (trendChart.data.labels.length > 50) {
+            trendChart.data.labels.shift();
+            trendChart.data.datasets.forEach(d => d.data.shift());
+          }
+        }
+
+        loadStatus(); loadHistory(); refreshPorts(); initTrendChart();
+      </script>
 </body>
+
 </html>
