@@ -51,7 +51,7 @@ FEATURE_NAMES = [
 ]
 
 # ─── Classification Mode State ─────────────────────────────────────────────────
-VALID_MODES = ["model", "heuristic", "threshold", "spoilage", "excel"]
+VALID_MODES = ["model", "heuristic", "threshold", "spoilage", "excel", "safety", "environment"]
 active_classification_mode = "excel"   # Default to excel mode as requested
 
 def get_effective_mode() -> str:
@@ -198,7 +198,7 @@ def run_spoilage(raw: dict) -> dict:
     """
     Analyzes MQ135 (Ammonia/VOC), MQ3 (Alcohol), and MQ4 (Methane)
     to detect food decomposition or fruit fermentation.
-    Returns: label, confidence, dominant_sensor, note, mode, stage
+    Adjusted for user's baseline: MQ3~555, MQ4~422, MQ135~213.
     """
     mq3   = raw.get("MQ3", 0)
     mq135 = raw.get("MQ135", 0)
@@ -209,38 +209,38 @@ def run_spoilage(raw: dict) -> dict:
     stage = "Stable"
     
     # 1. Critical Spoilage (High Ammonia or Methane)
-    if mq135 > 600 or mq4 > 500:
+    if mq135 > 550 or mq4 > 700:
         label = "Spoiled / Toxic"
         stage = "Danger"
         note = "🚨 CRITICAL: High decomposition gases. Potential health risk."
         conf = min((max(mq135, mq4) / 1023.0) * 100 + 10, 100)
     
     # 2. Early Decomposition
-    elif mq135 > 400 or mq4 > 350:
+    elif mq135 > 350 or mq4 > 580:
         label = "Spoiling"
         stage = "Warning"
-        note = "⚠️ WARNING: Rising ammonia/methane levels detected (organic decay)."
+        note = "⚠️ WARNING: Rising ammonia/methane levels (organic decay)."
         conf = 75.0 + (max(mq135, mq4) - 350) / 2
     
     # 3. Fermentation (High Alcohol)
-    elif mq3 > 550:
+    elif mq3 > 750:
         label = "Fermenting"
         stage = "Warning"
-        note = "🍎 OVER-RIPE: Significant alcohol/ester levels detected."
+        note = "🍎 OVER-RIPE: High alcohol/ester levels detected."
         conf = min((mq3 / 1023.0) * 100 + 5, 100)
     
     # 4. Ripening
-    elif 300 < mq3 <= 550:
+    elif 600 < mq3 <= 750:
         label = "Ripe / Aromatic"
         stage = "Fresh"
-        note = "🍏 RIPE: High aromatic signature, perfect for consumption."
+        note = "🍏 RIPE: Elevated aromatic signature, perfect for consumption."
         conf = 90.0
         
     # 5. Fresh / Normal
-    elif 100 < mq135 <= 300:
+    elif 150 < mq135 <= 350 and mq3 <= 600:
         label = "Fresh"
         stage = "Fresh"
-        note = "🥬 FRESH: Standard VOC levels for fresh organic matter."
+        note = "🥬 FRESH: Baseline VOC levels for fresh organic matter."
         conf = 85.0
         
     # 6. Low levels
@@ -263,12 +263,8 @@ def run_spoilage(raw: dict) -> dict:
 def run_excel_prediction(raw: dict) -> dict:
     """
     Compare raw sensor values against min/max ranges defined in excel_rules.json.
-    Returns the best matching smell based on the number of sensors within range.
+    Returns the matching smell only if ALL defined sensors are within range.
     """
-    best_smell = "Unknown"
-    best_score = 0
-    best_note = "No matching range found in Excel data."
-    
     if not excel_rules:
         return {
             "label": "Error",
@@ -293,29 +289,113 @@ def run_excel_prediction(raw: dict) -> dict:
             if range_vals["min"] <= val <= range_vals["max"]:
                 matches += 1
                 match_details.append(f"{s_name} OK")
-            else:
-                # Add a bit of info about how far off it is?
-                pass
         
-        if total_sensors > 0:
-            # Score is percentage of sensors in range
-            score = (matches / total_sensors) * 100
-            
-            # Simple tie-breaker: if scores are equal, we could use distance to range centers
-            if score > best_score:
-                best_score = score
-                best_smell = smell
-                best_note = f"Matched {matches}/{total_sensors} sensors from Excel rules. ({', '.join(match_details)})"
-                # Potential tie-breaker logic could go here
-                pass
-        
+        # Stricter condition: require 100% match of all defined sensors
+        if total_sensors > 0 and matches == total_sensors:
+            return {
+                "label":           smell,
+                "confidence":      100.0,
+                "dominant_sensor": max(raw, key=raw.get),
+                "note":            f"Full profile match ({matches}/{total_sensors} sensors OK).",
+                "mode":            "excel",
+            }
 
     return {
-        "label":           best_smell,
-        "confidence":      round(best_score, 2),
+        "label":           "Unknown",
+        "confidence":      0.0,
         "dominant_sensor": max(raw, key=raw.get),
-        "note":            best_note,
+        "note":            "No Excel rule matched all sensor conditions.",
         "mode":            "excel",
+    }
+
+# ─── Safety Detection Logic ────────────────────────────────────────────────────
+def run_safety(raw: dict) -> dict:
+    """
+    Analyzes hazards like CO, LPG, Smoke, and Hydrogen.
+    """
+    mq7   = raw.get("MQ7", 0)
+    mq5   = raw.get("MQ5", 0)
+    mq6   = raw.get("MQ6", 0)
+    mq2   = raw.get("MQ2", 0)
+    mq135 = raw.get("MQ135", 0)
+    mq8   = raw.get("MQ8", 0)
+    
+    label = "Safe"
+    note  = "No significant hazards detected."
+    conf  = 100.0
+    dominant = max(raw, key=raw.get)
+
+    if mq7 > 500:
+        label = "Carbon Monoxide Alert"
+        note  = "🚨 DANGER: High CO levels detected. Check ventilation!"
+        conf  = min((mq7 / 1023.0) * 100 + 20, 100)
+    elif mq5 > 450 or mq6 > 450:
+        label = "Gas Leak"
+        note  = "🚨 WARNING: LPG/Propane leak detected."
+        conf  = min((max(mq5, mq6) / 1023.0) * 100 + 10, 100)
+    elif mq2 > 650 and mq135 > 550:
+        label = "Smoke / Fire"
+        note  = "🔥 ALERT: High smoke and combustible gas levels."
+        conf  = min((mq2 / 1023.0) * 100 + 15, 100)
+    elif mq8 > 450:
+        label = "Hydrogen Leak"
+        note  = "⚠️ WARNING: Elevated Hydrogen gas detected."
+        conf  = min((mq8 / 1023.0) * 100 + 5, 100)
+    else:
+        conf = 95.0 # Baseline confidence in "Safe"
+
+    return {
+        "label":           label,
+        "confidence":      round(conf, 2),
+        "dominant_sensor": dominant,
+        "note":            note,
+        "mode":            "safety",
+    }
+
+# ─── Environment & Kitchen Logic ───────────────────────────────────────────────
+def run_environment(raw: dict) -> dict:
+    """
+    Analyzes air quality and common indoor scents like coffee or cooking.
+    """
+    mq3   = raw.get("MQ3", 0)
+    mq135 = raw.get("MQ135", 0)
+    mq2   = raw.get("MQ2", 0)
+    mq4   = raw.get("MQ4", 0)
+    
+    label = "Fresh Air"
+    note  = "Air quality is within normal parameters."
+    conf  = 90.0
+    dominant = max(raw, key=raw.get)
+
+    # Coffee detection (High MQ3 and MQ135 but low Methane/Rot)
+    if mq3 > 400 and mq135 > 300 and mq4 < 250:
+        label = "Coffee / Aromatic"
+        note  = "☕ Coffee or rich aromatic compounds detected."
+        conf  = 85.0
+    # Cooking/Fumes
+    elif mq2 > 550 and mq135 > 400:
+        label = "Cooking Activity"
+        note  = "🍳 Fumes or cooking-related VOCs detected."
+        conf  = 80.0
+    # Stale air
+    elif mq135 > 450:
+        label = "Stale Air"
+        note  = "💨 High CO2/VOCs. Consider opening a window."
+        conf  = 75.0
+    # Baseline
+    else:
+        total = sum(raw.values())
+        if total > 2000:
+            label = "Mixed Odors"
+            note  = "Multiple low-level organic compounds detected."
+            conf  = 60.0
+
+    return {
+        "label":           label,
+        "confidence":      round(conf, 2),
+        "dominant_sensor": dominant,
+        "note":            note,
+        "mode":            "environment",
     }
 
 # ─── Prediction dispatcher ─────────────────────────────────────────────────────
@@ -350,6 +430,12 @@ def run_prediction(raw: dict) -> dict:
 
     elif mode == "excel":
         return run_excel_prediction(raw)
+
+    elif mode == "safety":
+        return run_safety(raw)
+
+    elif mode == "environment":
+        return run_environment(raw)
 
     else:  # heuristic
         smell, note = HEURISTIC_MAP.get(dominant_sensor, ("Unknown", "No clear signature"))
@@ -578,6 +664,8 @@ def get_mode():
             "threshold": "Configurable value-range rules (editable via /api/threshold/rules)",
             "spoilage":  "Specialized detection for food rot, fermentation, and freshness",
             "excel":     "Predictions based on recorded min/max values from Excel file",
+            "safety":    "Hazard detection (LPG, CO, Smoke, Hydrogen)",
+            "environment": "Common air states (Coffee, Cooking, Stale Air, Fresh)",
         }
     })
 
